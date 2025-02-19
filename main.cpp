@@ -83,10 +83,10 @@ bool PrintLibExports(const wchar_t *libPath) {
     std::wcout << L"设置符号搜索路径: " << searchPath << std::endl;
   }
 
-  if (!SymInitialize(hProcess, searchPath, FALSE)) {
+  if (!SymInitialize(hProcess, (PCSTR)searchPath, FALSE)) {
     DWORD error = GetLastError();
     std::cerr << "SymInitialize失败. 错误代码: " << error << std::endl;
-    
+
     char errorMsg[256];
     FormatMessageA(
       FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
