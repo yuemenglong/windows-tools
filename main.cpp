@@ -6,10 +6,36 @@
 #include <conio.h>
 #include <cstring>
 #include <algorithm>
+#include <fstream>
 
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "Shlwapi.lib")
+
+std::string WStringToString(const std::wstring &wstr) {
+  if (wstr.empty()) return std::string();
+
+  // 获取转换后所需缓冲区的大小（包括 null 终止符）
+  int size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), NULL, 0, NULL, NULL);
+  if (size_needed == 0) {
+    // 处理错误 (例如，GetLastError() 获取详细错误信息)
+    return std::string(); // 或者抛出异常
+  }
+
+  std::string strTo(size_needed, 0); // 创建足够大小的 string
+
+  // 执行实际的转换
+  int result = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int) wstr.size(), &strTo[0], size_needed, NULL, NULL);
+  if (result == 0) {
+    // 处理错误 (例如，GetLastError() 获取详细错误信息)
+    return std::string(); // 或者抛出异常
+  }
+
+  //去除末尾的\0
+  strTo.resize(size_needed - 1);
+
+  return strTo;
+}
 
 BOOL CALLBACK EnumSymProc(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
   if (pSymInfo->Flags & SYMFLAG_EXPORT) {
@@ -18,7 +44,7 @@ BOOL CALLBACK EnumSymProc(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserCon
   return TRUE;
 }
 
-bool PrintLibExports(const wchar_t *libPath) {
+bool ProcessDllExports(const wchar_t *libPath) {
   // 检查文件是否存在并获取文件信息
   WIN32_FILE_ATTRIBUTE_DATA fileInfo;
   if (!GetFileAttributesExW(libPath, GetFileExInfoStandard, &fileInfo)) {
@@ -342,7 +368,7 @@ bool FindDumpbinPath(wchar_t *dumpbinPath, size_t pathSize) {
 }
 
 // 使用dumpbin处理.lib文件
-bool ProcessLibFile(const wchar_t *libPath) {
+bool ProcessLibExports(const wchar_t *libPath) {
   // 查找dumpbin.exe
   wchar_t dumpbinPath[MAX_PATH];
   if (!FindDumpbinPath(dumpbinPath, MAX_PATH)) {
@@ -422,6 +448,16 @@ bool ProcessLibFile(const wchar_t *libPath) {
 
   // 输出结果
   std::cout << output;
+  // TODO 打开的文件名为libPath+".txt"
+  std::string outputPath = WStringToString(std::wstring(libPath)) + ".txt";
+  FILE *fp = fopen(outputPath.c_str(), "w");
+  if (fp == NULL) {
+    std::cerr << "打开文件失败" << std::endl;
+    return false;
+  }
+  fwrite(output.c_str(), 1, output.size(), fp);
+  fclose(fp);
+  std::cout << "导出结果已保存到: " << outputPath << std::endl;
   return true;
 }
 
@@ -453,10 +489,10 @@ int main(int argc, char *argv[]) {
   bool success;
   if (PathMatchSpecW(wlibPath, L"*.lib")) {
     // 处理.lib文件
-    success = ProcessLibFile(wlibPath);
+    success = ProcessLibExports(wlibPath);
   } else {
     // 处理.dll文件
-    success = PrintLibExports(wlibPath);
+    success = ProcessDllExports(wlibPath);
   }
 
   delete[] wlibPath;
