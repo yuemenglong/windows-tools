@@ -1,7 +1,6 @@
 #include <iostream>
 #include <windows.h>
 #include <dbghelp.h>
-#include <string>
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -13,23 +12,23 @@ BOOL CALLBACK EnumSymProc(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserCon
     return TRUE;
 }
 
-void PrintLibExports(const std::wstring& libPath) {
+bool PrintLibExports(const wchar_t* libPath) {
     HANDLE hProcess = GetCurrentProcess();
 
     // 初始化符号处理器
     if (!SymInitialize(hProcess, nullptr, FALSE)) {
         std::cerr << "SymInitialize failed. Error: " << GetLastError() << std::endl;
-        return;
+        return false;
     }
 
     // 设置符号选项
     SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEBUG);
 
     // 加载库文件
-    DWORD64 baseAddr = SymLoadModuleEx(
+    DWORD64 baseAddr = SymLoadModuleExW(
         hProcess,
         nullptr,
-        libPath.c_str(),
+        libPath,
         nullptr,
         0,
         0,
@@ -40,7 +39,7 @@ void PrintLibExports(const std::wstring& libPath) {
     if (baseAddr == 0) {
         std::cerr << "Failed to load library. Error: " << GetLastError() << std::endl;
         SymCleanup(hProcess);
-        return;
+        return false;
     }
 
     // 枚举符号
@@ -52,11 +51,15 @@ void PrintLibExports(const std::wstring& libPath) {
         nullptr
     )) {
         std::cerr << "SymEnumSymbols failed. Error: " << GetLastError() << std::endl;
+        SymUnloadModule64(hProcess, baseAddr);
+        SymCleanup(hProcess);
+        return false;
     }
 
     // 卸载模块并清理
     SymUnloadModule64(hProcess, baseAddr);
     SymCleanup(hProcess);
+    return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -65,16 +68,26 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 将char*转换为wstring
+    // 将char*转换为wchar_t*
     int wlen = MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, NULL, 0);
-    std::wstring wlibPath(wlen, 0);
-    MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, &wlibPath[0], wlen);
-    
+    if (wlen == 0) {
+        std::cerr << "Failed to get required buffer size. Error: " << GetLastError() << std::endl;
+        return 1;
+    }
+
+    wchar_t* wlibPath = new wchar_t[wlen];
+    if (MultiByteToWideChar(CP_UTF8, 0, argv[1], -1, wlibPath, wlen) == 0) {
+        std::cerr << "Failed to convert path to wide string. Error: " << GetLastError() << std::endl;
+        delete[] wlibPath;
+        return 1;
+    }
+
     std::cout << "Analyzing lib file: " << argv[1] << std::endl;
     std::cout << "Exported functions:" << std::endl;
     std::cout << "-------------------" << std::endl;
     
-    PrintLibExports(wlibPath);
+    bool success = PrintLibExports(wlibPath);
     
-    return 0;
+    delete[] wlibPath;
+    return success ? 0 : 1;
 }
