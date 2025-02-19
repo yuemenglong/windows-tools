@@ -17,6 +17,7 @@ BOOL CALLBACK EnumSymProc(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserCon
   }
   return TRUE;
 }
+
 bool PrintLibExports(const wchar_t *libPath) {
   // 检查文件是否存在并获取文件信息
   WIN32_FILE_ATTRIBUTE_DATA fileInfo;
@@ -27,9 +28,9 @@ bool PrintLibExports(const wchar_t *libPath) {
 
   // 显示文件信息
   std::wcout << L"文件大小: " <<
-    (static_cast<ULONGLONG>(fileInfo.nFileSizeHigh) << 32) + fileInfo.nFileSizeLow <<
-    L" 字节" << std::endl;
-  
+             (static_cast<ULONGLONG>(fileInfo.nFileSizeHigh) << 32) + fileInfo.nFileSizeLow <<
+             L" 字节" << std::endl;
+
   // 尝试以二进制方式打开文件检查
   HANDLE hFile = CreateFileW(
     libPath,
@@ -40,12 +41,12 @@ bool PrintLibExports(const wchar_t *libPath) {
     FILE_ATTRIBUTE_NORMAL,
     NULL
   );
-  
+
   if (hFile == INVALID_HANDLE_VALUE) {
     std::cerr << "无法打开文件进行读取. Error: " << GetLastError() << std::endl;
     return false;
   }
-  
+
   // 读取文件头部来验证文件格式
   const size_t headerSize = 0x40; // 读取更大的头部以检查PE/COFF格式
   unsigned char header[headerSize];
@@ -57,7 +58,7 @@ bool PrintLibExports(const wchar_t *libPath) {
   }
 
   std::cout << "文件头部特征: ";
-  for (int i = 0; i < min(16, (int)bytesRead); i++) {
+  for (int i = 0; i < min(16, (int) bytesRead); i++) {
     printf("%02X ", header[i]);
   }
   std::cout << std::endl;
@@ -83,7 +84,7 @@ bool PrintLibExports(const wchar_t *libPath) {
     std::wcout << L"设置符号搜索路径: " << searchPath << std::endl;
   }
 
-  if (!SymInitialize(hProcess, (PCSTR)searchPath, FALSE)) {
+  if (!SymInitialize(hProcess, (PCSTR) searchPath, FALSE)) {
     DWORD error = GetLastError();
     std::cerr << "SymInitialize失败. 错误代码: " << error << std::endl;
 
@@ -100,21 +101,21 @@ bool PrintLibExports(const wchar_t *libPath) {
     std::cerr << "初始化错误: " << errorMsg << std::endl;
     return false;
   }
-  
+
   std::cout << "符号处理器初始化成功" << std::endl;
 
   // 设置符号加载选项
   DWORD newOptions = SYMOPT_DEBUG |           // 启用调试输出
-                    SYMOPT_LOAD_ANYTHING |    // 尝试加载任何类型的文件作为符号
-                    SYMOPT_UNDNAME |          // 取消修饰C++符号名
-                    SYMOPT_AUTO_PUBLICS |     // 自动加载公共符号
-                    SYMOPT_INCLUDE_32BIT_MODULES | // 包含32位模块
-                    SYMOPT_CASE_INSENSITIVE | // 不区分大小写
-                    SYMOPT_ALLOW_ABSOLUTE_SYMBOLS; // 允许绝对符号
+                     SYMOPT_LOAD_ANYTHING |    // 尝试加载任何类型的文件作为符号
+                     SYMOPT_UNDNAME |          // 取消修饰C++符号名
+                     SYMOPT_AUTO_PUBLICS |     // 自动加载公共符号
+                     SYMOPT_INCLUDE_32BIT_MODULES | // 包含32位模块
+                     SYMOPT_CASE_INSENSITIVE | // 不区分大小写
+                     SYMOPT_ALLOW_ABSOLUTE_SYMBOLS; // 允许绝对符号
 
   SymSetOptions(newOptions);
   std::cout << "符号加载选项设置为: 0x" << std::hex << newOptions << std::dec << std::endl;
-  
+
   // 确保搜索路径包含当前目录
   wchar_t symPath[MAX_PATH * 2];
   if (SymGetSearchPathW(hProcess, symPath, MAX_PATH * 2)) {
@@ -127,14 +128,14 @@ bool PrintLibExports(const wchar_t *libPath) {
   // 尝试直接加载DLL看是否能获取模块句柄
   HMODULE hModule = LoadLibraryW(libPath);
   if (hModule != NULL) {
-      std::cout << "成功加载为DLL，模块句柄: 0x" << std::hex << (DWORD64)hModule << std::dec << std::endl;
-      FreeLibrary(hModule);
+    std::cout << "成功加载为DLL，模块句柄: 0x" << std::hex << (DWORD64) hModule << std::dec << std::endl;
+    FreeLibrary(hModule);
   } else {
-      std::cout << "无法作为DLL加载（这可能是正常的，如果这是一个.lib文件）" << std::endl;
+    std::cout << "无法作为DLL加载（这可能是正常的，如果这是一个.lib文件）" << std::endl;
   }
   // 获取映像大小
   DWORD64 moduleSize = fileInfo.nFileSizeLow + (static_cast<DWORD64>(fileInfo.nFileSizeHigh) << 32);
-  
+
   DWORD64 baseAddr = SymLoadModuleExW(
     hProcess,
     nullptr,
@@ -159,7 +160,7 @@ bool PrintLibExports(const wchar_t *libPath) {
   if (baseAddr == 0) {
     DWORD error = GetLastError();
     std::cerr << "加载库文件失败. Error code: " << error << std::endl;
-    
+
     // 获取更详细的错误信息
     char errorMsg[256];
     FormatMessageA(
@@ -172,7 +173,7 @@ bool PrintLibExports(const wchar_t *libPath) {
       NULL
     );
     std::cerr << "系统错误信息: " << errorMsg << std::endl;
-    
+
     // 检查文件访问权限
     DWORD attributes = GetFileAttributesW(libPath);
     if (attributes != INVALID_FILE_ATTRIBUTES) {
@@ -184,13 +185,13 @@ bool PrintLibExports(const wchar_t *libPath) {
     }
 
     // 尝试获取更多符号加载信息
-    IMAGEHLP_MODULE64 moduleInfo = { sizeof(IMAGEHLP_MODULE64) };
+    IMAGEHLP_MODULE64 moduleInfo = {sizeof(IMAGEHLP_MODULE64)};
     if (SymGetModuleInfo64(hProcess, baseAddr, &moduleInfo)) {
       std::cout << "符号类型: " << moduleInfo.SymType << std::endl;
       std::cout << "加载的映像名称: " << moduleInfo.LoadedImageName << std::endl;
     }
 
-    switch(error) {
+    switch (error) {
       case ERROR_FILE_NOT_FOUND:
         std::cerr << "文件未找到" << std::endl;
         break;
@@ -214,7 +215,7 @@ bool PrintLibExports(const wchar_t *libPath) {
   }
 
   // 获取模块详细信息
-  IMAGEHLP_MODULE64 modInfo = { sizeof(IMAGEHLP_MODULE64) };
+  IMAGEHLP_MODULE64 modInfo = {sizeof(IMAGEHLP_MODULE64)};
   if (SymGetModuleInfo64(hProcess, baseAddr, &modInfo)) {
     std::cout << "\n模块详细信息:" << std::endl;
     std::cout << "加载基址: 0x" << std::hex << modInfo.BaseOfImage << std::dec << std::endl;
@@ -223,20 +224,35 @@ bool PrintLibExports(const wchar_t *libPath) {
     std::cout << "校验和: 0x" << std::hex << modInfo.CheckSum << std::dec << std::endl;
     std::cout << "符号类型: ";
     switch (modInfo.SymType) {
-      case SymNone: std::cout << "无符号"; break;
-      case SymCoff: std::cout << "COFF格式"; break;
-      case SymCv: std::cout << "CodeView格式"; break;
-      case SymPdb: std::cout << "PDB格式"; break;
-      case SymExport: std::cout << "导出表"; break;
-      case SymDeferred: std::cout << "延迟加载"; break;
-      case SymSym: std::cout << "SYM格式"; break;
-      default: std::cout << "未知(" << modInfo.SymType << ")";
+      case SymNone:
+        std::cout << "无符号";
+        break;
+      case SymCoff:
+        std::cout << "COFF格式";
+        break;
+      case SymCv:
+        std::cout << "CodeView格式";
+        break;
+      case SymPdb:
+        std::cout << "PDB格式";
+        break;
+      case SymExport:
+        std::cout << "导出表";
+        break;
+      case SymDeferred:
+        std::cout << "延迟加载";
+        break;
+      case SymSym:
+        std::cout << "SYM格式";
+        break;
+      default:
+        std::cout << "未知(" << modInfo.SymType << ")";
     }
     std::cout << std::endl;
   }
 
   std::cout << "\n开始枚举导出符号..." << std::endl;
-  
+
   // 枚举符号
   if (!SymEnumSymbols(
     hProcess,
@@ -247,7 +263,7 @@ bool PrintLibExports(const wchar_t *libPath) {
   )) {
     DWORD error = GetLastError();
     std::cerr << "符号枚举失败. 错误代码: " << error << std::endl;
-    
+
     char errorMsg[256];
     FormatMessageA(
       FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -259,13 +275,13 @@ bool PrintLibExports(const wchar_t *libPath) {
       NULL
     );
     std::cerr << "错误信息: " << errorMsg << std::endl;
-    
+
     if (error == ERROR_NOT_FOUND) {
       std::cerr << "未找到任何符号" << std::endl;
     } else if (error == ERROR_INVALID_ADDRESS) {
       std::cerr << "无效的地址范围" << std::endl;
     }
-    
+
     SymUnloadModule64(hProcess, baseAddr);
     SymCleanup(hProcess);
     return false;
@@ -274,6 +290,78 @@ bool PrintLibExports(const wchar_t *libPath) {
   // 卸载模块并清理
   SymUnloadModule64(hProcess, baseAddr);
   SymCleanup(hProcess);
+  return true;
+}
+
+// 使用dumpbin处理.lib文件
+bool ProcessLibFile(const wchar_t *libPath) {
+  // 构建dumpbin命令
+  wchar_t cmdLine[MAX_PATH * 2];
+  swprintf(cmdLine, MAX_PATH * 2, L".\\dumpbin.exe /exports \"%s\"", libPath);
+
+  // 创建管道以捕获输出
+  SECURITY_ATTRIBUTES sa;
+  sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+  sa.bInheritHandle = TRUE;
+  sa.lpSecurityDescriptor = NULL;
+
+  HANDLE hReadPipe, hWritePipe;
+  if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
+    std::cerr << "创建管道失败. 错误码: " << GetLastError() << std::endl;
+    return false;
+  }
+
+  // 设置进程启动信息
+  STARTUPINFOW si = {sizeof(STARTUPINFOW)};
+  si.dwFlags = STARTF_USESTDHANDLES;
+  si.hStdOutput = hWritePipe;
+  si.hStdError = hWritePipe;
+  si.hStdInput = NULL;
+
+  PROCESS_INFORMATION pi;
+  bool success = CreateProcessW(
+    NULL,
+    cmdLine,
+    NULL,
+    NULL,
+    TRUE,
+    CREATE_NO_WINDOW,
+    NULL,
+    NULL,
+    &si,
+    &pi
+  );
+
+  if (!success) {
+    std::cerr << "运行dumpbin失败. 错误码: " << GetLastError() << std::endl;
+    CloseHandle(hReadPipe);
+    CloseHandle(hWritePipe);
+    return false;
+  }
+
+  // 关闭写入端，防止死锁
+  CloseHandle(hWritePipe);
+
+  // 读取输出
+  char buffer[4096];
+  DWORD bytesRead;
+  std::string output;
+
+  while (ReadFile(hReadPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL) && bytesRead > 0) {
+    buffer[bytesRead] = '\0';
+    output += buffer;
+  }
+
+  // 等待进程完成
+  WaitForSingleObject(pi.hProcess, INFINITE);
+
+  // 清理
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  CloseHandle(hReadPipe);
+
+  // 输出结果
+  std::cout << output;
   return true;
 }
 
@@ -302,7 +390,14 @@ int main(int argc, char *argv[]) {
   std::cout << "导出的函数列表:" << std::endl;
   std::cout << "-------------------" << std::endl;
 
-  bool success = PrintLibExports(wlibPath);
+  bool success;
+  if (PathMatchSpecW(wlibPath, L"*.lib")) {
+    // 处理.lib文件
+    success = ProcessLibFile(wlibPath);
+  } else {
+    // 处理.dll文件
+    success = PrintLibExports(wlibPath);
+  }
 
   delete[] wlibPath;
   std::cout << "\n按任意键退出..." << std::endl;
