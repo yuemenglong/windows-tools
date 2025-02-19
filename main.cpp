@@ -41,36 +41,80 @@ bool PrintLibExports(const wchar_t *libPath) {
     return false;
   }
   
-  // 读取文件头部来验证是否为有效的库文件
-  char header[4];
+  // 读取文件头部来验证文件格式
+  const size_t headerSize = 0x40; // 读取更大的头部以检查PE/COFF格式
+  unsigned char header[headerSize];
   DWORD bytesRead;
-  if (!ReadFile(hFile, header, sizeof(header), &bytesRead, NULL)) {
+  if (!ReadFile(hFile, header, headerSize, &bytesRead, NULL)) {
     std::cerr << "读取文件头部失败. Error: " << GetLastError() << std::endl;
     CloseHandle(hFile);
     return false;
   }
-  
-  CloseHandle(hFile);
-  
-  // 检查文件头部是否为有效的库文件标识（通常以!<arch>开头）
-  if (bytesRead == 4 && memcmp(header, "!<ar", 4) != 0) {
-    std::cerr << "警告: 文件可能不是有效的库文件格式" << std::endl;
+
+  std::cout << "文件头部特征: ";
+  for (int i = 0; i < min(16, (int)bytesRead); i++) {
+    printf("%02X ", header[i]);
   }
+  std::cout << std::endl;
+
+  // 检查是否为COFF/PE格式
+  if (bytesRead >= 2 && header[0] == 0x4D && header[1] == 0x5A) { // MZ signature
+    std::cout << "检测到PE文件格式(MZ头)" << std::endl;
+  } else if (bytesRead >= 2 && (header[0] == 0x64 || header[0] == 0x4c) && header[1] == 0x01) {
+    std::cout << "检测到COFF对象文件格式" << std::endl;
+  } else if (bytesRead >= 8 && memcmp(header, "!<arch>\n", 8) == 0) {
+    std::cout << "检测到标准库文件格式(!<arch>)" << std::endl;
+  } else {
+    std::cout << "未知的文件格式" << std::endl;
+  }
+
+  CloseHandle(hFile);
 
   HANDLE hProcess = GetCurrentProcess();
-  if (!SymInitialize(hProcess, nullptr, FALSE)) {
-    std::cerr << "SymInitialize failed. Error: " << GetLastError() << std::endl;
-    return false;
+
+  // 尝试设置符号搜索路径为当前目录
+  wchar_t searchPath[MAX_PATH];
+  if (GetCurrentDirectoryW(MAX_PATH, searchPath)) {
+    std::wcout << L"设置符号搜索路径: " << searchPath << std::endl;
   }
 
-  // 设置所有可能的调试选项
-  DWORD oldOptions = SymGetOptions();
-  DWORD newOptions = SYMOPT_DEBUG | SYMOPT_UNDNAME | SYMOPT_VERBOSE |
-                    SYMOPT_LOAD_LINES | SYMOPT_OMAP_FIND_NEAREST |
-                    SYMOPT_DEFERRED_LOADS | SYMOPT_DEBUG_END;
-  SymSetOptions(newOptions);
+  if (!SymInitialize(hProcess, searchPath, FALSE)) {
+    DWORD error = GetLastError();
+    std::cerr << "SymInitialize失败. 错误代码: " << error << std::endl;
+    
+    char errorMsg[256];
+    FormatMessageA(
+      FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+      NULL,
+      error,
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+      errorMsg,
+      sizeof(errorMsg),
+      NULL
+    );
+    std::cerr << "初始化错误: " << errorMsg << std::endl;
+    return false;
+  }
+  
+  std::cout << "符号处理器初始化成功" << std::endl;
 
-  std::cout << "符号加载选项设置为: 0x" << std::hex << SymGetOptions() << std::dec << std::endl;
+  // 设置符号加载选项
+  DWORD newOptions = SYMOPT_DEBUG |           // 启用调试输出
+                    SYMOPT_LOAD_ANYTHING |    // 尝试加载任何类型的文件作为符号
+                    SYMOPT_UNDNAME |          // 取消修饰C++符号名
+                    SYMOPT_AUTO_PUBLICS |     // 自动加载公共符号
+                    SYMOPT_INCLUDE_32BIT_MODULES | // 包含32位模块
+                    SYMOPT_CASE_INSENSITIVE | // 不区分大小写
+                    SYMOPT_ALLOW_ABSOLUTE_SYMBOLS; // 允许绝对符号
+
+  SymSetOptions(newOptions);
+  std::cout << "符号加载选项设置为: 0x" << std::hex << newOptions << std::dec << std::endl;
+  
+  // 确保搜索路径包含当前目录
+  wchar_t symPath[MAX_PATH * 2];
+  if (SymGetSearchPathW(hProcess, symPath, MAX_PATH * 2)) {
+    std::wcout << L"当前符号搜索路径: " << symPath << std::endl;
+  }
 
   // 加载库文件
   std::wcout << L"正在尝试加载文件: " << libPath << std::endl;
@@ -83,16 +127,29 @@ bool PrintLibExports(const wchar_t *libPath) {
   } else {
       std::cout << "无法作为DLL加载（这可能是正常的，如果这是一个.lib文件）" << std::endl;
   }
+  // 获取映像大小
+  DWORD64 moduleSize = fileInfo.nFileSizeLow + (static_cast<DWORD64>(fileInfo.nFileSizeHigh) << 32);
+  
   DWORD64 baseAddr = SymLoadModuleExW(
     hProcess,
     nullptr,
     libPath,
     nullptr,
     0,
-    0,
+    moduleSize,  // 提供实际的文件大小
     nullptr,
     0
   );
+
+  // 尝试刷新模块列表
+  if (baseAddr != 0) {
+    std::cout << "模块加载地址: 0x" << std::hex << baseAddr << std::dec << std::endl;
+    if (!SymRefreshModuleList(hProcess)) {
+      std::cout << "警告: 刷新模块列表失败, 错误码: " << GetLastError() << std::endl;
+    } else {
+      std::cout << "模块列表刷新成功" << std::endl;
+    }
+  }
 
   if (baseAddr == 0) {
     DWORD error = GetLastError();
@@ -151,15 +208,59 @@ bool PrintLibExports(const wchar_t *libPath) {
     return false;
   }
 
+  // 获取模块详细信息
+  IMAGEHLP_MODULE64 modInfo = { sizeof(IMAGEHLP_MODULE64) };
+  if (SymGetModuleInfo64(hProcess, baseAddr, &modInfo)) {
+    std::cout << "\n模块详细信息:" << std::endl;
+    std::cout << "加载基址: 0x" << std::hex << modInfo.BaseOfImage << std::dec << std::endl;
+    std::cout << "映像大小: " << modInfo.ImageSize << " 字节" << std::endl;
+    std::cout << "时间戳: 0x" << std::hex << modInfo.TimeDateStamp << std::dec << std::endl;
+    std::cout << "校验和: 0x" << std::hex << modInfo.CheckSum << std::dec << std::endl;
+    std::cout << "符号类型: ";
+    switch (modInfo.SymType) {
+      case SymNone: std::cout << "无符号"; break;
+      case SymCoff: std::cout << "COFF格式"; break;
+      case SymCv: std::cout << "CodeView格式"; break;
+      case SymPdb: std::cout << "PDB格式"; break;
+      case SymExport: std::cout << "导出表"; break;
+      case SymDeferred: std::cout << "延迟加载"; break;
+      case SymSym: std::cout << "SYM格式"; break;
+      default: std::cout << "未知(" << modInfo.SymType << ")";
+    }
+    std::cout << std::endl;
+  }
+
+  std::cout << "\n开始枚举导出符号..." << std::endl;
+  
   // 枚举符号
   if (!SymEnumSymbols(
     hProcess,
     baseAddr,
-    "*",  // 匹配所有符号
+    "*!*",  // 匹配所有符号（包括命名空间/类）
     EnumSymProc,
     nullptr
   )) {
-    std::cerr << "SymEnumSymbols failed. Error: " << GetLastError() << std::endl;
+    DWORD error = GetLastError();
+    std::cerr << "符号枚举失败. 错误代码: " << error << std::endl;
+    
+    char errorMsg[256];
+    FormatMessageA(
+      FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+      NULL,
+      error,
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+      errorMsg,
+      sizeof(errorMsg),
+      NULL
+    );
+    std::cerr << "错误信息: " << errorMsg << std::endl;
+    
+    if (error == ERROR_NOT_FOUND) {
+      std::cerr << "未找到任何符号" << std::endl;
+    } else if (error == ERROR_INVALID_ADDRESS) {
+      std::cerr << "无效的地址范围" << std::endl;
+    }
+    
     SymUnloadModule64(hProcess, baseAddr);
     SymCleanup(hProcess);
     return false;
