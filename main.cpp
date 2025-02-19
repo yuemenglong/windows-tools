@@ -293,11 +293,71 @@ bool PrintLibExports(const wchar_t *libPath) {
   return true;
 }
 
+// 查找dumpbin.exe的路径
+bool FindDumpbinPath(wchar_t *dumpbinPath, size_t pathSize) {
+  // 首先检查当前目录
+  if (GetCurrentDirectoryW(MAX_PATH, dumpbinPath)) {
+    wcscat_s(dumpbinPath, pathSize, L"\\dumpbin.exe");
+    if (GetFileAttributesW(dumpbinPath) != INVALID_FILE_ATTRIBUTES) {
+      return true;
+    }
+  }
+
+  // 然后检查常见的Visual Studio安装路径
+  const wchar_t *vsLocations[] = {
+    L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Tools\\MSVC",
+    L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\MSVC",
+    L"C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC",
+    L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Professional\\VC\\Tools\\MSVC",
+    L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\MSVC",
+    L"C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC"
+  };
+
+  WIN32_FIND_DATAW findData;
+  for (const wchar_t *vsLocation: vsLocations) {
+    wchar_t searchPath[MAX_PATH];
+    wcscpy_s(searchPath, vsLocation);
+    wcscat_s(searchPath, L"\\*");
+
+    HANDLE hFind = FindFirstFileW(searchPath, &findData);
+    if (hFind != INVALID_HANDLE_VALUE) {
+      do {
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+          if (wcscmp(findData.cFileName, L".") != 0 && wcscmp(findData.cFileName, L"..") != 0) {
+            // 构造完整的dumpbin.exe路径
+            swprintf(dumpbinPath, pathSize, L"%s\\%s\\bin\\Hostx64\\x64\\dumpbin.exe",
+                     vsLocation, findData.cFileName);
+            if (GetFileAttributesW(dumpbinPath) != INVALID_FILE_ATTRIBUTES) {
+              FindClose(hFind);
+              return true;
+            }
+          }
+        }
+      } while (FindNextFileW(hFind, &findData));
+      FindClose(hFind);
+    }
+  }
+
+  return false;
+}
+
 // 使用dumpbin处理.lib文件
 bool ProcessLibFile(const wchar_t *libPath) {
+  // 查找dumpbin.exe
+  wchar_t dumpbinPath[MAX_PATH];
+  if (!FindDumpbinPath(dumpbinPath, MAX_PATH)) {
+    std::cerr << "错误: 无法找到dumpbin.exe。请确保Visual Studio已正确安装。" << std::endl;
+    std::cerr << "请在以下位置检查dumpbin.exe是否存在：" << std::endl;
+    std::cerr << "1. 当前目录" << std::endl;
+    std::cerr << "2. Visual Studio 2022的安装目录下的MSVC工具链目录" << std::endl;
+    return false;
+  }
+
   // 构建dumpbin命令
-  wchar_t cmdLine[MAX_PATH * 2];
-  swprintf(cmdLine, MAX_PATH * 2, L".\\dumpbin.exe /exports \"%s\"", libPath);
+  wchar_t cmdLine[MAX_PATH * 3];
+  swprintf(cmdLine, MAX_PATH * 3, L"\"%s\" /exports \"%s\"", dumpbinPath, libPath);
+
+  std::wcout << L"执行命令: " << cmdLine << std::endl;
 
   // 创建管道以捕获输出
   SECURITY_ATTRIBUTES sa;
