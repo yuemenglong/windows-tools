@@ -1,10 +1,15 @@
-﻿#include <iostream>
-#include <windows.h>
+﻿#include <windows.h>
 #include <dbghelp.h>
+#include <psapi.h>
+#include <Shlwapi.h>
+#include <iostream>
 #include <conio.h>
 #include <cstring>
+#include <algorithm>
 
 #pragma comment(lib, "dbghelp.lib")
+#pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "Shlwapi.lib")
 
 BOOL CALLBACK EnumSymProc(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
   if (pSymInfo->Flags & SYMFLAG_EXPORT) {
