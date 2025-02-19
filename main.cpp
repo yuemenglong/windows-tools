@@ -1,6 +1,7 @@
 ﻿#include <iostream>
 #include <windows.h>
 #include <dbghelp.h>
+#include <conio.h>
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -85,5 +86,7 @@ int main(int argc, char *argv[]) {
   bool success = PrintLibExports(wlibPath);
 
   delete[] wlibPath;
+  std::cout << "\n按任意键退出..." << std::endl;
+  _getch();
   return success ? 0 : 1;
 }
