@@ -7,6 +7,7 @@
 #include <cstring>
 #include <algorithm>
 #include <fstream>
+#include <sstream>
 
 #pragma comment(lib, "dbghelp.lib")
 #pragma comment(lib, "psapi.lib")
@@ -37,9 +38,25 @@ std::string WStringToString(const std::wstring &wstr) {
   return strTo;
 }
 
+static std::stringstream ss;
+
+static void outputToFile(const wchar_t *libPath, std::string output) {
+  std::cout << output << std::endl;
+  std::string outputPath = WStringToString(std::wstring(libPath)) + ".txt";
+  FILE *fp = fopen(outputPath.c_str(), "w");
+  if (fp == NULL) {
+    std::cerr << "打开文件失败" << std::endl;
+    return;
+  }
+  fwrite(output.c_str(), 1, output.size(), fp);
+  fclose(fp);
+  std::cout << "导出结果已保存到: " << outputPath << std::endl;
+}
+
 BOOL CALLBACK EnumSymProc(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
   if (pSymInfo->Flags & SYMFLAG_EXPORT) {
-    std::cout << pSymInfo->Name << std::endl;
+//    std::cout << pSymInfo->Name << std::endl;
+    ss << pSymInfo->Name << std::endl;
   }
   return TRUE;
 }
@@ -316,6 +333,9 @@ bool ProcessDllExports(const wchar_t *libPath) {
   // 卸载模块并清理
   SymUnloadModule64(hProcess, baseAddr);
   SymCleanup(hProcess);
+
+  // 输出到文件
+  outputToFile(libPath, ss.str());
   return true;
 }
 
@@ -447,17 +467,7 @@ bool ProcessLibExports(const wchar_t *libPath) {
   CloseHandle(hReadPipe);
 
   // 输出结果
-  std::cout << output;
-  // TODO 打开的文件名为libPath+".txt"
-  std::string outputPath = WStringToString(std::wstring(libPath)) + ".txt";
-  FILE *fp = fopen(outputPath.c_str(), "w");
-  if (fp == NULL) {
-    std::cerr << "打开文件失败" << std::endl;
-    return false;
-  }
-  fwrite(output.c_str(), 1, output.size(), fp);
-  fclose(fp);
-  std::cout << "导出结果已保存到: " << outputPath << std::endl;
+  outputToFile(libPath, output);
   return true;
 }
 
