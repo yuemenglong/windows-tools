@@ -55,6 +55,30 @@ std::string readFileContent(const fs::path& filePath) {
     return content;
 }
 
+// 转义XML特殊字符
+std::string escapeXmlChars(const std::string& input) {
+    std::string result;
+    result.reserve(input.size() * 1.1); // 预留一些额外空间
+    
+    for (char c : input) {
+        if (c == '<') {
+            result += "&lt;";
+        } else if (c == '>') {
+            result += "&gt;";
+        } else if (c == '&') {
+            result += "&amp;";
+        } else if (c == '\"') {
+            result += "&quot;";
+        } else if (c == '\'') {
+            result += "&apos;";
+        } else {
+            result += c;
+        }
+    }
+    
+    return result;
+}
+
 int main(int argc, char *argv[]) {
   /*参数只有一个，是一个目录的路径，我们叫根路径
    * 首先检查根路径是否存在且是一个路径
@@ -111,10 +135,11 @@ int main(int argc, char *argv[]) {
                   // 获取相对路径
                   fs::path relativePath = fs::relative(entry.path(), rootPath);
                   std::string content = readFileContent(entry.path());
+                  std::string escapedContent = escapeXmlChars(content);
                   
                   // 写入XML节点
                   xmlFile << "  <file path=\"" << relativePath.string() << "\">\n";
-                  xmlFile << "    <![CDATA[" << content << "]]>\n";
+                  xmlFile << "    <![CDATA[" << escapedContent << "]]>\n";
                   xmlFile << "  </file>\n";
               }
           }
