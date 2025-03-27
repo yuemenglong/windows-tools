@@ -16,6 +16,22 @@ bool isCodeFile(const std::string& extension) {
     return codeExtensions.find(extension) != codeExtensions.end();
 }
 
+bool shouldIgnorePath(const fs::path& path) {
+    static const std::set<std::string> ignoreDirs = {
+        "venv", ".venv", "node_modules", ".git", "__pycache__", 
+        "build", "dist", "bin", "obj", "target", ".idea", ".vs"
+    };
+    
+    // 检查路径的每一部分是否在忽略列表中
+    for (const auto& part : path) {
+        if (ignoreDirs.find(part.string()) != ignoreDirs.end()) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 std::string readFileContent(const fs::path& filePath) {
     std::ifstream file(filePath, std::ios::in);  // 使用文本模式而非二进制模式
     if (!file) {
@@ -82,6 +98,11 @@ int main(int argc, char *argv[]) {
   // 递归遍历目录
   try {
       for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+          // 检查是否应该忽略该路径
+          if (shouldIgnorePath(entry.path())) {
+              continue;
+          }
+          
           if (fs::is_regular_file(entry)) {
               std::string extension = entry.path().extension().string();
               
