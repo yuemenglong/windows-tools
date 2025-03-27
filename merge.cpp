@@ -4,13 +4,14 @@
 #include <fstream>
 #include <vector>
 #include <set>
+#include <conio.h> // 用于getch()函数
 
 namespace fs = std::filesystem;
 
 bool isCodeFile(const std::string& extension) {
     static const std::set<std::string> codeExtensions = {
         ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx", ".hxx", 
-        ".java", ".py", ".js", ".ts", ".go"
+        ".java", ".py", ".js", ".ts", ".go", ".dart"
     };
     
     return codeExtensions.find(extension) != codeExtensions.end();
@@ -55,13 +56,19 @@ std::string readFileContent(const fs::path& filePath) {
     return content;
 }
 
-// 转义XML特殊字符
+// 转义XML特殊字符并过滤不可见字符
 std::string escapeXmlChars(const std::string& input) {
     std::string result;
     result.reserve(input.size() * 1.1); // 预留一些额外空间
     
-    for (char c : input) {
-        if (c == '<') {
+    for (unsigned char c : input) {
+        // 保留常用的控制字符（换行、回车、制表符）
+        bool isVisibleOrAllowed = (c >= 32 && c != 127) || c == '\n' || c == '\r' || c == '\t';
+        
+        if (!isVisibleOrAllowed) {
+            // 忽略不可见字符
+            continue;
+        } else if (c == '<') {
             result += "&lt;";
         } else if (c == '>') {
             result += "&gt;";
@@ -91,9 +98,20 @@ int main(int argc, char *argv[]) {
    * 将生成的xml存入根路径下_merge.xml
    * */
   
+  // 统计信息
+  int totalFiles = 0;
+  int mergedFiles = 0;
+  int skippedFiles = 0;
+  int skippedDirs = 0;
+  std::vector<std::string> mergedFilePaths;
+  std::vector<std::string> skippedFilePaths;
+  std::vector<std::string> skippedDirPaths;
+  
   // 检查命令行参数
   if (argc != 2) {
       std::cerr << "用法: " << argv[0] << " <目录路径>" << std::endl;
+      std::cout << "按任意键退出..." << std::endl;
+      _getch();
       return 1;
   }
   
@@ -103,8 +121,12 @@ int main(int argc, char *argv[]) {
   // 检查路径是否存在且是目录
   if (!fs::exists(rootPath) || !fs::is_directory(rootPath)) {
       std::cerr << "错误: " << rootPath << " 不存在或不是一个目录" << std::endl;
+      std::cout << "按任意键退出..." << std::endl;
+      _getch();
       return 1;
   }
+  
+  std::cout << "开始处理目录: " << rootPath << std::endl;
   
   // 创建输出XML文件 - 修改为根目录+_merge.xml格式
   fs::path outputFile = rootPath.string() + "_merge.xml";
@@ -112,6 +134,8 @@ int main(int argc, char *argv[]) {
   
   if (!xmlFile) {
       std::cerr << "无法创建输出文件: " << outputFile << std::endl;
+      std::cout << "按任意键退出..." << std::endl;
+      _getch();
       return 1;
   }
   
@@ -122,12 +146,25 @@ int main(int argc, char *argv[]) {
   // 递归遍历目录
   try {
       for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
-          // 检查是否应该忽略该路径
-          if (shouldIgnorePath(entry.path())) {
-              continue;
-          }
-          
-          if (fs::is_regular_file(entry)) {
+          if (fs::is_directory(entry)) {
+              totalFiles++; // 统计目录
+              // 检查是否应该忽略该目录
+              if (shouldIgnorePath(entry.path())) {
+                  skippedDirs++;
+                  skippedDirPaths.push_back(entry.path().string());
+                  std::cout << "跳过目录: " << entry.path().string() << std::endl;
+                  continue;
+              }
+          } else if (fs::is_regular_file(entry)) {
+              totalFiles++; // 统计文件
+              // 检查是否应该忽略该路径
+              if (shouldIgnorePath(entry.path())) {
+                  skippedFiles++;
+                  skippedFilePaths.push_back(entry.path().string());
+                  std::cout << "跳过文件(位于忽略目录): " << entry.path().string() << std::endl;
+                  continue;
+              }
+              
               std::string extension = entry.path().extension().string();
               
               // 检查是否是代码文件
@@ -141,11 +178,22 @@ int main(int argc, char *argv[]) {
                   xmlFile << "  <file path=\"" << relativePath.string() << "\">\n";
                   xmlFile << "    <![CDATA[" << escapedContent << "]]>\n";
                   xmlFile << "  </file>\n";
+                  
+                  mergedFiles++;
+                  mergedFilePaths.push_back(entry.path().string());
+                  std::cout << "处理文件: " << entry.path().string() << std::endl;
+              } else {
+                  // 不是代码文件，跳过
+                  skippedFiles++;
+                  skippedFilePaths.push_back(entry.path().string());
+                  std::cout << "跳过文件(非代码文件): " << entry.path().string() << std::endl;
               }
           }
       }
   } catch (const fs::filesystem_error& e) {
       std::cerr << "文件系统错误: " << e.what() << std::endl;
+      std::cout << "按任意键退出..." << std::endl;
+      _getch();
       return 1;
   }
   
@@ -153,6 +201,17 @@ int main(int argc, char *argv[]) {
   xmlFile << "</files>\n";
   xmlFile.close();
   
-  std::cout << "成功生成 " << outputFile << std::endl;
+  // 输出统计信息
+  std::cout << "\n==== 处理完成 ====\n";
+  std::cout << "扫描总文件/目录数: " << totalFiles << std::endl;
+  std::cout << "合并的代码文件数: " << mergedFiles << std::endl;
+  std::cout << "跳过的文件数: " << skippedFiles << std::endl;
+  std::cout << "跳过的目录数: " << skippedDirs << std::endl;
+  std::cout << "输出文件: " << outputFile << std::endl;
+  
+  // 等待用户按任意键退出
+  std::cout << "\n按任意键退出..." << std::endl;
+  _getch();
+  
   return 0;
 }
