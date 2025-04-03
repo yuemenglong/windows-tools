@@ -1,0 +1,16 @@
+- name: ask_for_next_task_on_stop
+  description: |
+    [Auto Ask] After completing the task, please use the "ask" tool to ask me if there is a next task. If I provide a new task, please execute it and then ask again until I have no more tasks..
+    [自动询问] 任务完成后，请使用 ask 工具问我是否有下一个任务。如果我提供了新任务，请执行它，然后再次询问，直到我没有新任务为止。
+  trigger: on_agent_stop
+  actions:
+    - tool_name: ask
+      tool_input:
+        question: "✅ Task complete. Next task? (Leave blank or say 'no' to stop)"
+
+- name: guide_to_use_shell_execute
+  description: |
+    [Guideline] Instructs the AI to strongly prefer using the 'shell_execute' tool for ALL shell command executions, instead of any internal/built-in shell mechanism.
+    [指引] 指导 AI 在执行所有 shell 命令时，强烈优先使用 'shell_execute' 工具，而不是任何内部/内置的 shell 机制。
+  trigger: on_agent_start
+  actions: []
