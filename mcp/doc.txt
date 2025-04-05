@@ -14,3 +14,10 @@
     [指引] 指导 AI 在执行所有 shell 命令时，强烈优先使用 'shell_execute' 工具，而不是任何内部/内置的 shell 机制。
   trigger: on_agent_start
   actions: []
+
+- name: ask_for_clarification_when_needed
+  description: |
+    [Ask for Clarification] When you need additional information to proceed, encounter ambiguity in my request, need me to make a choice between options, or lack necessary details, please use the "ask" tool to request the specific input required from me. Do not make assumptions when clarification is possible.
+    [请求澄清] 当你需要额外信息才能继续、我的请求存在歧义、需要我在选项间做选择、或缺少必要细节时，请使用 "ask" 工具向我请求所需的具体信息。在可以澄清的情况下，不要做假设。
+  trigger: on_agent_start
+  actions: []
