@@ -26,6 +26,52 @@ using json = nlohmann::json;
 std::mutex cout_mutex;
 std::mutex log_mutex;
 
+// --- get_timestamp function remains unchanged ---
+std::string get_timestamp() {
+  auto now = std::chrono::system_clock::now();
+  auto time = std::chrono::system_clock::to_time_t(now);
+  std::tm local_tm;
+  localtime_s(&local_tm, &time);
+  std::stringstream ss;
+  ss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+  return ss.str();
+}
+
+// --- log_message function - MODIFIED FOR THREAD SAFETY ---
+void log_message(const std::string &message) {
+  std::lock_guard<std::mutex> lock(log_mutex); // Ensure thread-safe access to log file
+  std::ofstream log_file("mcp_log.txt", std::ios::app);
+  if (log_file.is_open()) { log_file << "[" << get_timestamp() << "] " << message << std::endl; }
+  else {
+    // Fallback to cerr if log file fails (cerr is generally more thread-safe for simple messages)
+    std::cerr << "[" << get_timestamp() << "] Log Error: " << message << std::endl;
+  }
+}
+
+// Function to write to stdout in a thread-safe manner
+void write_to_stdout(const json &data, const std::string &log_prefix = "") {
+  try {
+    std::string data_str;
+    if (data.is_string()) {
+      data_str = data.get<std::string>();
+    } else {
+      data_str = data.dump();
+    }
+
+    { // Lock cout only for the duration of printing
+      std::lock_guard<std::mutex> lock(cout_mutex);
+      std::cout << data_str << std::endl; // std::endl also flushes
+    }
+
+    // Optional logging
+    if (!log_prefix.empty()) {
+      log_message(log_prefix + ": " + data_str);
+    }
+  } catch (const std::exception &e) {
+    log_message("Error writing to stdout: " + std::string(e.what()));
+  }
+}
+
 // --- execute_notepad_edit function remains unchanged ---
 std::string execute_notepad_edit(const std::string &cmd = "") {
   wchar_t temp_path[MAX_PATH];
@@ -58,28 +104,6 @@ std::string execute_notepad_edit(const std::string &cmd = "") {
   input_file.close();
   DeleteFileW(temp_file_path.c_str());
   return content;
-}
-
-// --- get_timestamp function remains unchanged ---
-std::string get_timestamp() {
-  auto now = std::chrono::system_clock::now();
-  auto time = std::chrono::system_clock::to_time_t(now);
-  std::tm local_tm;
-  localtime_s(&local_tm, &time);
-  std::stringstream ss;
-  ss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
-  return ss.str();
-}
-
-// --- log_message function - MODIFIED FOR THREAD SAFETY ---
-void log_message(const std::string &message) {
-  std::lock_guard<std::mutex> lock(log_mutex); // Ensure thread-safe access to log file
-  std::ofstream log_file("mcp_log.txt", std::ios::app);
-  if (log_file.is_open()) { log_file << "[" << get_timestamp() << "] " << message << std::endl; }
-  else {
-    // Fallback to cerr if log file fails (cerr is generally more thread-safe for simple messages)
-    std::cerr << "[" << get_timestamp() << "] Log Error: " << message << std::endl;
-  }
 }
 
 // Tool structure to represent a tool with metadata and execution logic
@@ -248,7 +272,6 @@ json handle_tools_call_request(const json &request) {
   return g_toolRegistry.executeTool(tool_name, arguments);
 }
 
-
 // --- Heartbeat Function ---
 void send_heartbeat(std::atomic<bool> &stop_flag, json progress_token) {
   std::string token_str;
@@ -285,22 +308,11 @@ void send_heartbeat(std::atomic<bool> &stop_flag, json progress_token) {
                 }}
     };
 
-    // Serialize and send the notification safely
-    try {
-      std::string notification_str = heartbeat_notification.dump();
-      { // Lock cout only for the duration of printing
-        std::lock_guard<std::mutex> lock(cout_mutex);
-        std::cout << notification_str << std::endl; // std::endl also flushes
-      }
-      log_message("Sent heartbeat for token: " + token_str);
-    } catch (const std::exception &e) {
-      log_message("Error sending heartbeat: " + std::string(e.what()));
-      // Decide if the thread should terminate on send error, maybe not?
-    }
+    // Serialize and send the notification safely using the write_to_stdout function
+    write_to_stdout(heartbeat_notification, "Sent heartbeat for token: " + token_str);
   }
   log_message("Heartbeat thread stopped for token: " + token_str);
 }
-
 
 // --- process_request function - MODIFIED FOR HEARTBEAT ---
 json process_request(const json &request) {
@@ -624,17 +636,8 @@ int main() {
     // Send the response (if one was generated)
     // process_request now handles constructing both success and error responses with IDs
     if (!response.empty()) {
-      try {
-        std::string response_str = response.dump();
-        { // Lock cout only for the duration of printing
-          std::lock_guard<std::mutex> lock(cout_mutex);
-          std::cout << response_str << std::endl; // endl flushes
-        }
-        // Logging is handled within process_request now
-        // log_message("Response sent: " + response_str);
-      } catch (const std::exception &e) {
-        log_message("Error dumping or sending response: " + std::string(e.what()));
-      }
+      // Use the write_to_stdout function to send the response
+      write_to_stdout(response);
     } else {
       // This case should ideally not happen if process_request always returns a response
       // for requests with IDs, or if parsing fails.
