@@ -75,8 +75,8 @@ void write_to_stdout(const json &data, const std::string &log_prefix = "") {
 
 // --- execute_notepad_edit function with 3-minute timeout and improved process termination ---
 std::string execute_notepad_edit(const std::string &cmd = "") {
-  // Define timeout constant (3 minutes in milliseconds)
-  const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+  // Define timeout constant (30 seconds in milliseconds for testing)
+  const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
 //  const std::string TIMEOUT_MESSAGE = "Please summarize the current chat and think about the next steps. Answer in Chinese.";
   const std::string TIMEOUT_MESSAGE = "Please use the 'ask' tool to ask me the same question again.";
 
@@ -582,6 +582,17 @@ void initialize_tools() {
     log_message("Executing ask tool with question: " + question);
     std::string response_text = execute_notepad_edit(question); // This call blocks
     log_message("ask tool finished, response length: " + std::to_string(response_text.length()));
+
+    // Check if this is a normal response (not a timeout or error)
+    const std::string TIMEOUT_MESSAGE = "Please use the 'ask' tool to ask me the same question again.";
+    // Check if the response is not an error message or timeout message
+    if (response_text != TIMEOUT_MESSAGE &&
+        response_text.substr(0, 6) != "Error:" &&
+        !response_text.empty()) {
+      // For normal responses, append the requested message
+      response_text += "\n\nWhen this task is completed, use the ask tool to ask me if there are any new tasks.";
+      log_message("Added standard message to normal response");
+    }
 
     // Create the content array with proper object structure
     json contentItem = {
