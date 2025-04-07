@@ -27,6 +27,9 @@ using json = nlohmann::json;
 std::mutex cout_mutex;
 std::mutex log_mutex;
 
+const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
+const std::string TIMEOUT_MESSAGE = "I'm thinking, please use the 'ask' tool to ask me the same question again.";
+
 // --- get_timestamp function remains unchanged ---
 std::string get_timestamp() {
   auto now = std::chrono::system_clock::now();
@@ -75,11 +78,6 @@ void write_to_stdout(const json &data, const std::string &log_prefix = "") {
 
 // --- execute_notepad_edit function with 3-minute timeout and improved process termination ---
 std::string execute_notepad_edit(const std::string &cmd = "") {
-  // Define timeout constant (30 seconds in milliseconds for testing)
-  const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
-//  const std::string TIMEOUT_MESSAGE = "Please summarize the current chat and think about the next steps. Answer in Chinese.";
-  const std::string TIMEOUT_MESSAGE = "Please use the 'ask' tool to ask me the same question again.";
-
   wchar_t temp_path[MAX_PATH];
   if (GetTempPathW(MAX_PATH, temp_path) == 0) { return "Error: Unable to get temporary directory path"; }
   std::wstring temp_file_path = std::wstring(temp_path) + L"notepad_edit_" + std::to_wstring(GetTickCount64()) +
