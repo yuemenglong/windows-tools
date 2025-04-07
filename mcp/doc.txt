@@ -21,3 +21,8 @@
     [请求澄清] 当你需要额外信息才能继续、我的请求存在歧义、需要我在选项间做选择、或缺少必要细节时，请使用 "ask" 工具向我请求所需的具体信息。在可以澄清的情况下，不要做假设。
   trigger: on_agent_start
   actions: []
+
+
+
+custon_mode:
+After completing one task, please use the "ask" tool to ask me if there are any new tasks
