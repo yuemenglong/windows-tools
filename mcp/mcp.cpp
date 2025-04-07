@@ -73,7 +73,7 @@ void write_to_stdout(const json &data, const std::string &log_prefix = "") {
   }
 }
 
-// --- execute_notepad_edit function with 3-minute timeout ---
+// --- execute_notepad_edit function with 3-minute timeout and improved process termination ---
 std::string execute_notepad_edit(const std::string &cmd = "") {
   // Define timeout constant (3 minutes in milliseconds)
   const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
@@ -102,25 +102,72 @@ std::string execute_notepad_edit(const std::string &cmd = "") {
     return "Error: Unable to start Notepad";
   }
 
+  // Store the process ID for potential fallback termination
+  DWORD notepadProcessId = GetProcessId(sei.hProcess);
+  log_message("Started notepad process with ID: " + std::to_string(notepadProcessId));
+
   // Wait for notepad to close with a timeout
   DWORD wait_result = WaitForSingleObject(sei.hProcess, NOTEPAD_TIMEOUT_MS);
 
   // Check if the wait timed out
   if (wait_result == WAIT_TIMEOUT) {
-    log_message("Notepad input timed out after 3 minutes. Terminating notepad process.");
+    log_message("Notepad input timed out after 3 minutes. Attempting to terminate notepad process.");
 
-    // Terminate the notepad process
-    TerminateProcess(sei.hProcess, 1);
+    // First try to find and close the notepad window gracefully
+    bool gracefulTermination = false;
+    HWND notepadWindow = FindWindowW(L"Notepad", NULL);
+    if (notepadWindow) {
+      log_message("Found notepad window, attempting graceful termination first.");
+      // Try to send WM_CLOSE message to notepad
+      if (SendMessageW(notepadWindow, WM_CLOSE, 0, 0)) {
+        // Wait briefly to see if it closes
+        if (WaitForSingleObject(sei.hProcess, 1000) != WAIT_TIMEOUT) {
+          log_message("Notepad closed gracefully.");
+          gracefulTermination = true;
+        }
+      }
+    }
+
+    // If graceful termination failed, use TerminateProcess
+    if (!gracefulTermination) {
+      log_message("Attempting to forcefully terminate notepad process.");
+      if (!TerminateProcess(sei.hProcess, 1)) {
+        DWORD error = GetLastError();
+        log_message("Failed to terminate notepad process with TerminateProcess. Error code: " + std::to_string(error));
+
+        // Fallback: use taskkill command
+        log_message("Attempting fallback termination with taskkill command.");
+        std::string taskkillCmd = "taskkill /F /PID " + std::to_string(notepadProcessId);
+        system(taskkillCmd.c_str());
+
+        // Wait briefly to see if taskkill worked
+        if (WaitForSingleObject(sei.hProcess, 1000) == WAIT_TIMEOUT) {
+          log_message("Warning: All attempts to terminate notepad failed. Process may still be running.");
+        } else {
+          log_message("Notepad terminated successfully using taskkill.");
+        }
+      } else {
+        log_message("Notepad terminated successfully using TerminateProcess.");
+      }
+    }
+
+    // Clean up resources
     CloseHandle(sei.hProcess);
 
     // Delete the temporary file
-    DeleteFileW(temp_file_path.c_str());
+    if (DeleteFileW(temp_file_path.c_str())) {
+      log_message("Temporary file deleted successfully.");
+    } else {
+      DWORD error = GetLastError();
+      log_message("Failed to delete temporary file. Error code: " + std::to_string(error));
+    }
 
     // Return the specified message
     return TIMEOUT_MESSAGE;
   }
 
   // Normal case - notepad was closed by the user
+  log_message("Notepad closed normally by user.");
   CloseHandle(sei.hProcess);
 
   std::ifstream input_file(temp_file_path);
