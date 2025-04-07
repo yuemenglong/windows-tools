@@ -77,7 +77,7 @@ void write_to_stdout(const json &data, const std::string &log_prefix = "") {
 std::string execute_notepad_edit(const std::string &cmd = "") {
   // Define timeout constant (3 minutes in milliseconds)
   const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
-  const std::string TIMEOUT_MESSAGE = "请总结当前chat，并思考下一步的工作";
+  const std::string TIMEOUT_MESSAGE = "Please summarize the current chat and think about the next steps. Answer in Chinese.";
 
   wchar_t temp_path[MAX_PATH];
   if (GetTempPathW(MAX_PATH, temp_path) == 0) { return "Error: Unable to get temporary directory path"; }
