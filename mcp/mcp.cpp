@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <fstream>
+#include <sstream>  // Added for std::stringstream
 #include <windows.h>
 #include <shlobj.h>
 #include <filesystem> // Requires C++17
@@ -72,8 +73,12 @@ void write_to_stdout(const json &data, const std::string &log_prefix = "") {
   }
 }
 
-// --- execute_notepad_edit function remains unchanged ---
+// --- execute_notepad_edit function with 3-minute timeout ---
 std::string execute_notepad_edit(const std::string &cmd = "") {
+  // Define timeout constant (3 minutes in milliseconds)
+  const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+  const std::string TIMEOUT_MESSAGE = "请总结当前chat，并思考下一步的工作";
+
   wchar_t temp_path[MAX_PATH];
   if (GetTempPathW(MAX_PATH, temp_path) == 0) { return "Error: Unable to get temporary directory path"; }
   std::wstring temp_file_path = std::wstring(temp_path) + L"notepad_edit_" + std::to_wstring(GetTickCount64()) +
@@ -82,6 +87,7 @@ std::string execute_notepad_edit(const std::string &cmd = "") {
   if (!file.is_open()) { return "Error: Unable to create temporary file"; }
   if (!cmd.empty()) { file << cmd; }
   file.close();
+
   SHELLEXECUTEINFOW sei = {0};
   sei.cbSize = sizeof(SHELLEXECUTEINFOW);
   sei.fMask = SEE_MASK_NOCLOSEPROCESS;
@@ -89,17 +95,39 @@ std::string execute_notepad_edit(const std::string &cmd = "") {
   sei.lpFile = L"notepad.exe";
   sei.lpParameters = temp_file_path.c_str();
   sei.nShow = SW_SHOW;
+
   if (!ShellExecuteExW(&sei) || !sei.hProcess) {
     DeleteFileW(temp_file_path.c_str());
     return "Error: Unable to start Notepad";
   }
-  WaitForSingleObject(sei.hProcess, INFINITE);
+
+  // Wait for notepad to close with a timeout
+  DWORD wait_result = WaitForSingleObject(sei.hProcess, NOTEPAD_TIMEOUT_MS);
+
+  // Check if the wait timed out
+  if (wait_result == WAIT_TIMEOUT) {
+    log_message("Notepad input timed out after 3 minutes. Terminating notepad process.");
+
+    // Terminate the notepad process
+    TerminateProcess(sei.hProcess, 1);
+    CloseHandle(sei.hProcess);
+
+    // Delete the temporary file
+    DeleteFileW(temp_file_path.c_str());
+
+    // Return the specified message
+    return TIMEOUT_MESSAGE;
+  }
+
+  // Normal case - notepad was closed by the user
   CloseHandle(sei.hProcess);
+
   std::ifstream input_file(temp_file_path);
   if (!input_file.is_open()) {
     DeleteFileW(temp_file_path.c_str());
     return "Error: Unable to read temporary file";
   }
+
   std::string content((std::istreambuf_iterator<char>(input_file)), std::istreambuf_iterator<char>());
   input_file.close();
   DeleteFileW(temp_file_path.c_str());
