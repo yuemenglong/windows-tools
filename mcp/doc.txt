@@ -1,7 +1,7 @@
 - name: ask_for_next_task_on_stop
   description: |
-    [Auto Ask] After completing the task, please use the "ask" tool to ask me if there is a next task. If I provide a new task, please execute it and then ask again until I have no more tasks..
-    [自动询问] 任务完成后，请使用 ask 工具问我是否有下一个任务。如果我提供了新任务，请执行它，然后再次询问，直到我没有新任务为止。
+    [Auto Ask] After completing the task, please use the mcp "ask" tool to ask me if there is a next task. If I provide a new task, please execute it and then ask again until I have no more tasks..
+    [自动询问] 任务完成后，请使用 mcp "ask" 工具问我是否有下一个任务。如果我提供了新任务，请执行它，然后再次询问，直到我没有新任务为止。
   trigger: on_agent_stop
   actions:
     - tool_name: ask
@@ -17,12 +17,13 @@
 
 - name: ask_for_clarification_when_needed
   description: |
-    [Ask for Clarification] When you need additional information to proceed, encounter ambiguity in my request, need me to make a choice between options, or lack necessary details, please use the "ask" tool to request the specific input required from me. Do not make assumptions when clarification is possible.
-    [请求澄清] 当你需要额外信息才能继续、我的请求存在歧义、需要我在选项间做选择、或缺少必要细节时，请使用 "ask" 工具向我请求所需的具体信息。在可以澄清的情况下，不要做假设。
+    [Ask for Clarification] When you need additional information to proceed, encounter ambiguity in my request, need me to make a choice between options, or lack necessary details, please use the mcp "ask" tool to request the specific input required from me. Do not make assumptions when clarification is possible.
+    [请求澄清] 当你需要额外信息才能继续、我的请求存在歧义、需要我在选项间做选择、或缺少必要细节时，请使用 mcp "ask" 工具向我请求所需的具体信息。在可以澄清的情况下，不要做假设。
   trigger: on_agent_start
   actions: []
 
 
 
 custon_mode:
-After completing one task, please use the "ask" tool to ask me if there are any new tasks
+After completing one task, please use the mcp 'ask' tool to ask me if there are any new tasks.
+Answer in Chinese.
