@@ -28,7 +28,8 @@ std::mutex cout_mutex;
 std::mutex log_mutex;
 
 const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
-const std::string TIMEOUT_MESSAGE = "I'm thinking, please use the 'ask' tool to ask me the same question again.";
+const std::string TIMEOUT_MESSAGE = "I'm thinking, please use the mcp 'ask' tool to ask me the same question again.";
+const std::string EXT_TEXT = "\n\nWhen this task is completed, use the mcp 'ask' tool to ask me if there are any new tasks.";
 
 // --- get_timestamp function remains unchanged ---
 std::string get_timestamp() {
@@ -581,14 +582,12 @@ void initialize_tools() {
     std::string response_text = execute_notepad_edit(question); // This call blocks
     log_message("ask tool finished, response length: " + std::to_string(response_text.length()));
 
-    // Check if this is a normal response (not a timeout or error)
-    const std::string TIMEOUT_MESSAGE = "Please use the 'ask' tool to ask me the same question again.";
     // Check if the response is not an error message or timeout message
     if (response_text != TIMEOUT_MESSAGE &&
         response_text.substr(0, 6) != "Error:" &&
         !response_text.empty()) {
       // For normal responses, append the requested message
-      response_text += "\n\nWhen this task is completed, use the ask tool to ask me if there are any new tasks.";
+      response_text += EXT_TEXT;
       log_message("Added standard message to normal response");
     }
 
