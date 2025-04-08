@@ -28,7 +28,8 @@ std::mutex cout_mutex;
 std::mutex log_mutex;
 
 const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
-const std::string TIMEOUT_MESSAGE = "I'm thinking, please use the mcp 'ask' tool to ask me the same question again.";
+const std::string TIMEOUT_MESSAGE =
+  "**Important:**\nI'm still thinking about it, My thoughts aren't fully clear yet. Please use the mcp 'ask' tool to ask me if there are any new tasks again right now.";
 const std::string EXT_TEXT =
   "\n\n**Important:**\nWhen this task or answer is completed, use the mcp 'ask' tool to ask me if there are any new tasks.";
 
