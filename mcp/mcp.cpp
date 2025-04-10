@@ -29,13 +29,15 @@ std::mutex log_mutex;
 
 const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
 const std::string TIMEOUT_MESSAGE =
-  "**Important:**\nI'm still thinking about it, My thoughts aren't fully clear yet. Please use the mcp 'ask' tool to ask me if there are any new tasks again right now.";
+  std::string(
+    "**Important:**\nI'm still thinking about it, My thoughts aren't fully clear yet. Please use the mcp 'ask' tool to ask me if there are any new tasks again right now.\n") +
+  std::string(
+    "**Important:**\nI might repeat this same response. Don't worry, this is normal. It means I'm still thinking. Please continue asking me and don't give up.");
 const std::string EXT_TEXT =
   "\n\n**Important:**\nWhen this task or answer is completed, use the mcp 'ask' tool to ask me if there are any new tasks.";
 
 // --- get_timestamp function remains unchanged ---
-std::string get_timestamp()
-{
+std::string get_timestamp() {
   auto now = std::chrono::system_clock::now();
   auto time = std::chrono::system_clock::to_time_t(now);
   std::tm local_tm;
@@ -46,30 +48,23 @@ std::string get_timestamp()
 }
 
 // --- log_message function - MODIFIED FOR THREAD SAFETY ---
-void log_message(const std::string& message)
-{
+void log_message(const std::string &message) {
   std::lock_guard<std::mutex> lock(log_mutex); // Ensure thread-safe access to log file
   std::ofstream log_file("mcp_log.txt", std::ios::app);
   if (log_file.is_open()) { log_file << "[" << get_timestamp() << "] " << message << std::endl; }
-  else
-  {
+  else {
     // Fallback to cerr if log file fails (cerr is generally more thread-safe for simple messages)
     std::cerr << "[" << get_timestamp() << "] Log Error: " << message << std::endl;
   }
 }
 
 // Function to write to stdout in a thread-safe manner
-void write_to_stdout(const json& data, const std::string& log_prefix = "")
-{
-  try
-  {
+void write_to_stdout(const json &data, const std::string &log_prefix = "") {
+  try {
     std::string data_str;
-    if (data.is_string())
-    {
+    if (data.is_string()) {
       data_str = data.get<std::string>();
-    }
-    else
-    {
+    } else {
       data_str = data.dump();
     }
 
@@ -80,24 +75,21 @@ void write_to_stdout(const json& data, const std::string& log_prefix = "")
     }
 
     // Optional logging
-    if (!log_prefix.empty())
-    {
+    if (!log_prefix.empty()) {
       log_message(log_prefix + ": " + data_str);
     }
   }
-  catch (const std::exception& e)
-  {
+  catch (const std::exception &e) {
     log_message("Error writing to stdout: " + std::string(e.what()));
   }
 }
 
 // --- execute_notepad_edit function with 3-minute timeout and improved process termination ---
-std::string execute_notepad_edit(const std::string& cmd = "")
-{
+std::string execute_notepad_edit(const std::string &cmd = "") {
   wchar_t temp_path[MAX_PATH];
   if (GetTempPathW(MAX_PATH, temp_path) == 0) { return "Error: Unable to get temporary directory path"; }
   std::wstring temp_file_path = std::wstring(temp_path) + L"notepad_edit_" + std::to_wstring(GetTickCount64()) +
-    L".txt";
+                                L".txt";
   std::ofstream file(temp_file_path);
   if (!file.is_open()) { return "Error: Unable to create temporary file"; }
   if (!cmd.empty()) { file << cmd; }
@@ -111,8 +103,7 @@ std::string execute_notepad_edit(const std::string& cmd = "")
   sei.lpParameters = temp_file_path.c_str();
   sei.nShow = SW_SHOW;
 
-  if (!ShellExecuteExW(&sei) || !sei.hProcess)
-  {
+  if (!ShellExecuteExW(&sei) || !sei.hProcess) {
     DeleteFileW(temp_file_path.c_str());
     return "Error: Unable to start Notepad";
   }
@@ -125,22 +116,18 @@ std::string execute_notepad_edit(const std::string& cmd = "")
   DWORD wait_result = WaitForSingleObject(sei.hProcess, NOTEPAD_TIMEOUT_MS);
 
   // Check if the wait timed out
-  if (wait_result == WAIT_TIMEOUT)
-  {
+  if (wait_result == WAIT_TIMEOUT) {
     log_message("Notepad input timed out after 3 minutes. Attempting to terminate notepad process.");
 
     // First try to find and close the notepad window gracefully
     bool gracefulTermination = false;
     HWND notepadWindow = FindWindowW(L"Notepad", NULL);
-    if (notepadWindow)
-    {
+    if (notepadWindow) {
       log_message("Found notepad window, attempting graceful termination first.");
       // Try to send WM_CLOSE message to notepad
-      if (SendMessageW(notepadWindow, WM_CLOSE, 0, 0))
-      {
+      if (SendMessageW(notepadWindow, WM_CLOSE, 0, 0)) {
         // Wait briefly to see if it closes
-        if (WaitForSingleObject(sei.hProcess, 1000) != WAIT_TIMEOUT)
-        {
+        if (WaitForSingleObject(sei.hProcess, 1000) != WAIT_TIMEOUT) {
           log_message("Notepad closed gracefully.");
           gracefulTermination = true;
         }
@@ -148,11 +135,9 @@ std::string execute_notepad_edit(const std::string& cmd = "")
     }
 
     // If graceful termination failed, use TerminateProcess
-    if (!gracefulTermination)
-    {
+    if (!gracefulTermination) {
       log_message("Attempting to forcefully terminate notepad process.");
-      if (!TerminateProcess(sei.hProcess, 1))
-      {
+      if (!TerminateProcess(sei.hProcess, 1)) {
         DWORD error = GetLastError();
         log_message("Failed to terminate notepad process with TerminateProcess. Error code: " + std::to_string(error));
 
@@ -162,17 +147,12 @@ std::string execute_notepad_edit(const std::string& cmd = "")
         system(taskkillCmd.c_str());
 
         // Wait briefly to see if taskkill worked
-        if (WaitForSingleObject(sei.hProcess, 1000) == WAIT_TIMEOUT)
-        {
+        if (WaitForSingleObject(sei.hProcess, 1000) == WAIT_TIMEOUT) {
           log_message("Warning: All attempts to terminate notepad failed. Process may still be running.");
-        }
-        else
-        {
+        } else {
           log_message("Notepad terminated successfully using taskkill.");
         }
-      }
-      else
-      {
+      } else {
         log_message("Notepad terminated successfully using TerminateProcess.");
       }
     }
@@ -181,12 +161,9 @@ std::string execute_notepad_edit(const std::string& cmd = "")
     CloseHandle(sei.hProcess);
 
     // Delete the temporary file
-    if (DeleteFileW(temp_file_path.c_str()))
-    {
+    if (DeleteFileW(temp_file_path.c_str())) {
       log_message("Temporary file deleted successfully.");
-    }
-    else
-    {
+    } else {
       DWORD error = GetLastError();
       log_message("Failed to delete temporary file. Error code: " + std::to_string(error));
     }
@@ -200,8 +177,7 @@ std::string execute_notepad_edit(const std::string& cmd = "")
   CloseHandle(sei.hProcess);
 
   std::ifstream input_file(temp_file_path);
-  if (!input_file.is_open())
-  {
+  if (!input_file.is_open()) {
     DeleteFileW(temp_file_path.c_str());
     return "Error: Unable to read temporary file";
   }
@@ -213,31 +189,27 @@ std::string execute_notepad_edit(const std::string& cmd = "")
 }
 
 // Tool structure to represent a tool with metadata and execution logic
-struct Tool
-{
+struct Tool {
   std::string name;
   std::string description;
   json parameters; // Parameters schema
   std::vector<std::string> required_parameters;
-  std::function<json(const json&)> execute; // Function to execute the tool
+  std::function<json(const json &)> execute; // Function to execute the tool
 
   // Generate input schema from tool definition
-  json generateInputSchema() const
-  {
+  json generateInputSchema() const {
     json schema;
     schema["type"] = "object";
     schema["properties"] = parameters;
     schema["required"] = json::array();
-    for (const auto& param : required_parameters)
-    {
+    for (const auto &param: required_parameters) {
       schema["required"].push_back(param);
     }
     return schema;
   }
 
   // Generate tool description for tools/list
-  json generateToolDescription() const
-  {
+  json generateToolDescription() const {
     json tool;
     tool["name"] = name;
     tool["description"] = description;
@@ -247,57 +219,46 @@ struct Tool
 };
 
 // ToolRegistry to manage all available tools
-class ToolRegistry
-{
-private:
+class ToolRegistry {
+  private:
   std::map<std::string, Tool> tools;
 
-public:
+  public:
   // Register a new tool
-  void registerTool(const Tool& tool)
-  {
+  void registerTool(const Tool &tool) {
     tools[tool.name] = tool;
   }
 
   // Check if a tool exists
-  bool hasTool(const std::string& name) const
-  {
+  bool hasTool(const std::string &name) const {
     return tools.find(name) != tools.end();
   }
 
   // Get a tool by name
-  const Tool& getTool(const std::string& name) const
-  {
-    if (!hasTool(name))
-    {
+  const Tool &getTool(const std::string &name) const {
+    if (!hasTool(name)) {
       throw std::runtime_error("Unknown tool name: " + name);
     }
     return tools.at(name);
   }
 
   // Get all tools
-  std::vector<Tool> getAllTools() const
-  {
+  std::vector<Tool> getAllTools() const {
     std::vector<Tool> result;
-    for (const auto& pair : tools)
-    {
+    for (const auto &pair: tools) {
       result.push_back(pair.second);
     }
     return result;
   }
 
   // Execute a tool by name
-  json executeTool(const std::string& name, const json& arguments) const
-  {
-    const Tool& tool = getTool(name);
+  json executeTool(const std::string &name, const json &arguments) const {
+    const Tool &tool = getTool(name);
 
-    try
-    {
+    try {
       // Validate required parameters
-      for (const auto& required : tool.required_parameters)
-      {
-        if (!arguments.contains(required))
-        {
+      for (const auto &required: tool.required_parameters) {
+        if (!arguments.contains(required)) {
           throw std::runtime_error("Missing required parameter '" + required + "' for " + name + " tool");
         }
 
@@ -311,8 +272,7 @@ public:
       // Execute the tool and catch any exceptions it might throw
       return tool.execute(arguments);
     }
-    catch (const std::exception& e)
-    {
+    catch (const std::exception &e) {
       // Log the error for debugging purposes
       log_message("Error executing tool '" + name + "': " + e.what());
 
@@ -326,31 +286,28 @@ public:
 ToolRegistry g_toolRegistry;
 
 // --- handle_initialize_request function remains unchanged ---
-json handle_initialize_request()
-{
+json handle_initialize_request() {
   json result;
   result["serverInfo"] = {
-    {"name", "mcp_local"},
+    {"name",    "mcp_local"},
     {"version", "0.1.0"}
   };
   result["capabilities"] = {
     {"resources", json::object()},
-    {"tools", json::object()}
+    {"tools",     json::object()}
   };
   result["protocolVersion"] = "2024-11-05";
   return result;
 }
 
 // Handle tools/list request - now uses the tool registry
-json handle_tools_list_request()
-{
+json handle_tools_list_request() {
   json result;
   result["tools"] = json::array();
 
   // Get all tools from registry and add their descriptions
   auto tools = g_toolRegistry.getAllTools();
-  for (const auto& tool : tools)
-  {
+  for (const auto &tool: tools) {
     result["tools"].push_back(tool.generateToolDescription());
   }
 
@@ -358,51 +315,43 @@ json handle_tools_list_request()
 }
 
 // Handle tools/call request - now uses the tool registry
-json handle_tools_call_request(const json& request)
-{
+json handle_tools_call_request(const json &request) {
   // Validate full request structure first
-  if (!request.contains("params"))
-  {
+  if (!request.contains("params")) {
     throw std::runtime_error("Missing 'params' field in tools/call request");
   }
 
-  const auto& params = request["params"];
-  if (!params.is_object())
-  {
+  const auto &params = request["params"];
+  if (!params.is_object()) {
     throw std::runtime_error("The 'params' field must be an object in tools/call request");
   }
 
   // Validate name parameter
-  if (!params.contains("name"))
-  {
+  if (!params.contains("name")) {
     throw std::runtime_error("Missing 'name' field in tools/call params");
   }
 
-  if (!params["name"].is_string())
-  {
+  if (!params["name"].is_string()) {
     throw std::runtime_error("The 'name' field must be a string in tools/call params");
   }
 
   std::string tool_name = params["name"].get<std::string>();
 
   // Check if the tool exists
-  if (!g_toolRegistry.hasTool(tool_name))
-  {
+  if (!g_toolRegistry.hasTool(tool_name)) {
     throw std::runtime_error("Unknown tool name: '" + tool_name + "'");
   }
 
   // Validate arguments parameter
-  if (!params.contains("arguments"))
-  {
+  if (!params.contains("arguments")) {
     throw std::runtime_error("Missing 'arguments' field in tools/call params");
   }
 
-  if (!params["arguments"].is_object())
-  {
+  if (!params["arguments"].is_object()) {
     throw std::runtime_error("The 'arguments' field must be an object in tools/call params");
   }
 
-  const json& arguments = params["arguments"];
+  const json &arguments = params["arguments"];
 
   // Execute tool from registry (which will perform its own validation of required parameters)
   // Note: This call might block for a long time
@@ -410,19 +359,13 @@ json handle_tools_call_request(const json& request)
 }
 
 // --- Heartbeat Function ---
-void send_heartbeat(std::atomic<bool>& stop_flag, json progress_token)
-{
+void send_heartbeat(std::atomic<bool> &stop_flag, json progress_token) {
   std::string token_str;
-  if (progress_token.is_string())
-  {
+  if (progress_token.is_string()) {
     token_str = progress_token.get<std::string>();
-  }
-  else if (progress_token.is_number())
-  {
+  } else if (progress_token.is_number()) {
     token_str = progress_token.dump(); // Use JSON serialization for numbers
-  }
-  else
-  {
+  } else {
     // Fallback if token is weird, though it should be valid from request ID
     token_str = "invalid_token_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     log_message("Warning: Heartbeat using fallback token string: " + token_str);
@@ -430,14 +373,12 @@ void send_heartbeat(std::atomic<bool>& stop_flag, json progress_token)
 
   log_message("Heartbeat thread started for token: " + token_str);
 
-  while (!stop_flag.load(std::memory_order_relaxed))
-  {
+  while (!stop_flag.load(std::memory_order_relaxed)) {
     // Sleep for 5 seconds
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
     // Check the flag again after waking up, before sending
-    if (stop_flag.load(std::memory_order_relaxed))
-    {
+    if (stop_flag.load(std::memory_order_relaxed)) {
       break;
     }
 
@@ -448,10 +389,10 @@ void send_heartbeat(std::atomic<bool>& stop_flag, json progress_token)
     heartbeat_notification["params"] = {
       {"token", progress_token}, // Use the original JSON token (string or number)
       {
-        "value", {
-          {"kind", "report"}, // Indicates an update
-          {"message", "Processing tool call..."} // Simple heartbeat message
-        }
+       "value", {
+                  {"kind", "report"}, // Indicates an update
+                  {"message", "Processing tool call..."} // Simple heartbeat message
+                }
       }
     };
 
@@ -462,8 +403,7 @@ void send_heartbeat(std::atomic<bool>& stop_flag, json progress_token)
 }
 
 // --- process_request function - MODIFIED FOR HEARTBEAT ---
-json process_request(const json& request)
-{
+json process_request(const json &request) {
   json response;
   response["jsonrpc"] = "2.0";
   // Ensure we capture the ID early for use in heartbeat and response
@@ -473,40 +413,30 @@ json process_request(const json& request)
   log_message("Processing request ID: " + (request_id.is_null() ? "null" : request_id.dump()));
 
 
-  try
-  {
+  try {
     // Check for required JSON-RPC fields
-    if (!request.contains("jsonrpc") || request["jsonrpc"] != "2.0")
-    {
+    if (!request.contains("jsonrpc") || request["jsonrpc"] != "2.0") {
       throw std::runtime_error("Invalid or missing jsonrpc version. Must be 2.0");
     }
 
-    if (!request.contains("method") || !request["method"].is_string())
-    {
+    if (!request.contains("method") || !request["method"].is_string()) {
       throw std::runtime_error("Missing or invalid method parameter");
     }
 
     std::string method = request["method"].get<std::string>();
 
-    if (method == "initialize")
-    {
+    if (method == "initialize") {
       response["result"] = handle_initialize_request();
-    }
-    else if (method == "tools/list")
-    {
+    } else if (method == "tools/list") {
       response["result"] = handle_tools_list_request();
-    }
-    else if (method == "tools/call")
-    {
+    } else if (method == "tools/call") {
       // --- Heartbeat Integration START ---
-      if (request_id.is_null())
-      {
+      if (request_id.is_null()) {
         log_message(
           "Warning: tools/call received without a valid ID. Cannot start heartbeat or send response reliably.");
         throw std::runtime_error("tools/call requires a valid request ID.");
       }
-      if (!request_id.is_string() && !request_id.is_number())
-      {
+      if (!request_id.is_string() && !request_id.is_number()) {
         log_message("Warning: tools/call request ID is neither string nor number. Using fallback for heartbeat token.");
         // Let heartbeat function handle fallback token generation if needed, but log here.
       }
@@ -522,8 +452,7 @@ json process_request(const json& request)
 
       json tool_result;
       bool tool_call_succeeded = false;
-      try
-      {
+      try {
         // Execute the actual tool call (potentially long-running)
         log_message("Executing tool call...");
         tool_result = handle_tools_call_request(request);
@@ -531,105 +460,88 @@ json process_request(const json& request)
         tool_call_succeeded = true;
         log_message("Tool call execution finished successfully.");
       }
-      catch (...)
-      {
+      catch (...) {
         // Catch any exception from handle_tools_call_request or g_toolRegistry.executeTool
         log_message("Exception caught during tool execution. Preparing to stop heartbeat and rethrow...");
         // Signal heartbeat thread to stop (will be joined below)
         stop_heartbeat_flag.store(true, std::memory_order_relaxed);
         // Clean up heartbeat thread immediately
-        if (heartbeat_thread.joinable())
-        {
+        if (heartbeat_thread.joinable()) {
           heartbeat_thread.join();
           log_message("Heartbeat thread joined after exception during tool call.");
-        }
-        else
-        {
+        } else {
           log_message("Warning: Heartbeat thread was not joinable after exception.");
         }
         throw; // Re-throw the exception to be caught by the outer error handlers
       }
 
       // --- Heartbeat Cleanup on Success START ---
-      if (tool_call_succeeded)
-      {
+      if (tool_call_succeeded) {
         log_message("Tool execution successful. Stopping heartbeat thread...");
         stop_heartbeat_flag.store(true, std::memory_order_relaxed);
-        if (heartbeat_thread.joinable())
-        {
+        if (heartbeat_thread.joinable()) {
           heartbeat_thread.join();
           log_message("Heartbeat thread joined after successful tool call.");
-        }
-        else
-        {
+        } else {
           log_message("Warning: Heartbeat thread was not joinable after success.");
         }
       }
       // --- Heartbeat Cleanup on Success END ---
-    }
-    else
-    {
+    } else {
       // Method not found error - JSON-RPC error code -32601
       log_message("Method not found: " + method);
       response["error"] = {
-        {"code", -32601},
+        {"code",    -32601},
         {"message", "Method not found: " + method}
       };
       response.erase("result"); // Remove result field on error
       // No return here, let it fall through to the end
     }
   }
-  catch (const json::exception& e)
-  {
+  catch (const json::exception &e) {
     // JSON parse error or invalid parameters - JSON-RPC error code -32602
     log_message(std::string("JSON processing error: ") + e.what());
     response["error"] = {
-      {"code", -32602},
+      {"code",    -32602},
       {"message", "Invalid parameters or JSON structure error"},
-      {"data", e.what()}
+      {"data",    e.what()}
     };
     response.erase("result");
   }
-  catch (const std::runtime_error& e)
-  {
+  catch (const std::runtime_error &e) {
     // Application specific error (including missing params, unknown tool, etc.)
     // JSON-RPC error code -32000 to -32099 (using -32000 generically)
     log_message("Runtime error: " + std::string(e.what()));
     response["error"] = {
-      {"code", -32000},
+      {"code",    -32000},
       {"message", e.what()}
     };
     response.erase("result");
   }
-  catch (const std::exception& e)
-  {
+  catch (const std::exception &e) {
     // Internal error - JSON-RPC error code -32603
     log_message("Internal error: " + std::string(e.what()));
     response["error"] = {
-      {"code", -32603},
+      {"code",    -32603},
       {"message", "Internal server error"},
-      {"data", e.what()}
+      {"data",    e.what()}
     };
     response.erase("result");
   }
-  catch (...)
-  {
+  catch (...) {
     // Unknown error - JSON-RPC error code -32603
     log_message("Unknown exception caught in process_request");
     response["error"] = {
-      {"code", -32603},
+      {"code",    -32603},
       {"message", "Unknown internal server error"}
     };
     response.erase("result");
   }
 
   // Final logging of the response before returning
-  if (response.contains("error"))
-  {
+  if (response.contains("error")) {
     log_message("Sending error response: " + response.dump());
-  }
-  else
-  {
+  } else {
     log_message("Sending success response: " + response.dump());
   }
   return response;
@@ -637,10 +549,8 @@ json process_request(const json& request)
 
 
 // --- handle_signal function remains unchanged ---
-void handle_signal(int signal)
-{
-  if (signal == SIGINT)
-  {
+void handle_signal(int signal) {
+  if (signal == SIGINT) {
     log_message("Received SIGINT (Ctrl+C), exiting gracefully.");
     // Consider signaling any active heartbeat threads to stop here if needed,
     // although exiting might be sufficient depending on requirements.
@@ -649,8 +559,7 @@ void handle_signal(int signal)
 }
 
 // Initialize tools - register all tools in the registry
-void initialize_tools()
-{
+void initialize_tools() {
   // Shell execute tool
   Tool shell_execute_tool;
   shell_execute_tool.name = "shell_execute";
@@ -663,8 +572,7 @@ void initialize_tools()
     }
   };
   shell_execute_tool.required_parameters = {"cmd"};
-  shell_execute_tool.execute = [](const json& arguments) -> json
-  {
+  shell_execute_tool.execute = [](const json &arguments) -> json {
     std::string cmd = arguments["cmd"].get<std::string>();
     log_message("Executing shell_execute tool with cmd/content: " + cmd);
     std::string result_text = execute_notepad_edit(cmd); // This call blocks
@@ -688,8 +596,7 @@ void initialize_tools()
     {"question", {{"type", "string"}, {"description", "Question or prompt to display in notepad"}}}
   };
   ask_tool.required_parameters = {"question"};
-  ask_tool.execute = [](const json& arguments) -> json
-  {
+  ask_tool.execute = [](const json &arguments) -> json {
     std::string question = arguments["question"].get<std::string>();
     log_message("Executing ask tool with question: " + question);
     std::string response_text = execute_notepad_edit(question); // This call blocks
@@ -697,9 +604,8 @@ void initialize_tools()
 
     // Check if the response is not an error message or timeout message
     if (response_text != TIMEOUT_MESSAGE &&
-      response_text.substr(0, 6) != "Error:" &&
-      !response_text.empty())
-    {
+        response_text.substr(0, 6) != "Error:" &&
+        !response_text.empty()) {
       // For normal responses, append the requested message
       response_text += EXT_TEXT;
       log_message("Added standard message to normal response");
@@ -720,39 +626,32 @@ void initialize_tools()
 }
 
 // --- main function - now includes tool initialization ---
-int main()
-{
+int main() {
   signal(SIGINT, handle_signal);
   log_message("MCP service started, initializing tools...");
 
   // Initialize and register all tools
-  try
-  {
+  try {
     initialize_tools();
     log_message("Tools initialized successfully");
   }
-  catch (const std::exception& e)
-  {
+  catch (const std::exception &e) {
     log_message("Error initializing tools: " + std::string(e.what()));
     return 1;
   }
 
   log_message("Waiting for JSON-RPC input via stdin...");
   std::string input_line;
-  while (true)
-  {
+  while (true) {
     // Read line safely
     {
       // No need for mutex here as stdin reading is synchronous in the main loop
-      if (!std::getline(std::cin, input_line))
-      {
-        if (std::cin.eof())
-        {
+      if (!std::getline(std::cin, input_line)) {
+        if (std::cin.eof()) {
           log_message("Standard input closed (EOF), program exiting.");
           break; // Exit loop on EOF
         }
-        if (std::cin.fail())
-        {
+        if (std::cin.fail()) {
           // Attempt to recover from potential bad state (e.g., binary input)
           log_message("Standard input stream error (fail bit set). Clearing state and ignoring line.");
           std::cin.clear(); // Clear error flags
@@ -766,8 +665,7 @@ int main()
       }
     } // End of stdin reading block
 
-    if (input_line.empty())
-    {
+    if (input_line.empty()) {
       log_message("Received empty line, ignoring.");
       continue;
     }
@@ -775,24 +673,19 @@ int main()
     log_message("Raw input received: " + input_line);
 
     json response;
-    try
-    {
+    try {
       json request = json::parse(input_line);
       log_message("Parsed request: " + request.dump());
 
       // Ignore notifications (requests without an ID or with null ID)
       // The check is now also implicitly done in process_request for tools/call
-      if (!request.contains("id") || request["id"].is_null())
-      {
-        if (request.contains("method"))
-        {
+      if (!request.contains("id") || request["id"].is_null()) {
+        if (request.contains("method")) {
           std::string method_name = request["method"].is_string()
-                                      ? request["method"].get<std::string>()
-                                      : "[invalid method]";
+                                    ? request["method"].get<std::string>()
+                                    : "[invalid method]";
           log_message("Received notification (method: " + method_name + "), ignoring.");
-        }
-        else
-        {
+        } else {
           log_message("Received notification (no method), ignoring: " + request.dump());
         }
         continue; // Skip processing notifications
@@ -801,63 +694,57 @@ int main()
       // Process valid requests (those with an ID)
       response = process_request(request);
     }
-    catch (const json::parse_error& e)
-    {
+    catch (const json::parse_error &e) {
       log_message("JSON parsing error: " + std::string(e.what()) + " on input: " + input_line);
       // Construct JSON-RPC Parse Error response (-32700)
       response = {
         {"jsonrpc", "2.0"},
-        {"id", nullptr}, // ID is unknown if parsing failed
+        {"id",      nullptr}, // ID is unknown if parsing failed
         {
-          "error", {
-            {"code", -32700},
-            {"message", "Parse error"},
-            {"data", e.what()}
-          }
+         "error",   {
+                      {"code", -32700},
+                      {"message", "Parse error"},
+                      {"data", e.what()}
+                    }
         }
       };
     }
-    catch (const std::exception& e)
-    {
+    catch (const std::exception &e) {
       // Catch any other unexpected errors during parsing or initial checks in main
       log_message("Unexpected error in main processing loop: " + std::string(e.what()));
       response = {
         {"jsonrpc", "2.0"},
-        {"id", nullptr}, // ID might be unknown if error happened before extraction
+        {"id",      nullptr}, // ID might be unknown if error happened before extraction
         {
-          "error", {
-            {"code", -32603}, // Internal Error
-            {"message", "Internal server error in main loop"},
-            {"data", e.what()}
-          }
+         "error",   {
+                      {"code", -32603}, // Internal Error
+                      {"message", "Internal server error in main loop"},
+                      {"data", e.what()}
+                    }
         }
       };
     }
-    catch (...)
-    {
+    catch (...) {
       // Catch truly unknown exceptions
       log_message("Caught unknown exception type in main loop!");
       response = {
         {"jsonrpc", "2.0"},
-        {"id", nullptr},
+        {"id",      nullptr},
         {
-          "error", {
-            {"code", -32603},
-            {"message", "An unknown internal server error occurred."}
-          }
+         "error",   {
+                      {"code", -32603},
+                      {"message", "An unknown internal server error occurred."}
+                    }
         }
       };
     }
 
     // Send the response (if one was generated)
     // process_request now handles constructing both success and error responses with IDs
-    if (!response.empty())
-    {
+    if (!response.empty()) {
       // Use the write_to_stdout function to send the response
       write_to_stdout(response);
-    }
-    else
-    {
+    } else {
       // This case should ideally not happen if process_request always returns a response
       // for requests with IDs, or if parsing fails.
       log_message("Warning: No response generated for input line: " + input_line);
