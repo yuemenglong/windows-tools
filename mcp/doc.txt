@@ -27,3 +27,4 @@
 custon_mode:
 **Important**
 After completing one answer or task, please use the mcp 'ask' tool to ask me if there are any new tasks.
+Answer in Chinese.
