@@ -6,6 +6,9 @@
 #include <set>
 #include <sstream> // 用于字符串流处理（如果需要更复杂的行解析）
 #include <conio.h> // 用于getch()函数
+#include <algorithm> // 用于 std::transform
+#include <stdexcept> // 用于 std::exception
+#include <system_error> // 用于 std::error_code
 
 namespace fs = std::filesystem;
 
@@ -20,7 +23,8 @@ bool isCodeFile(const std::string& extension)
     };
     // 将扩展名转为小写进行比较，更健壮
     std::string lowerExtension = extension;
-    std::transform(lowerExtension.begin(), lowerExtension.end(), lowerExtension.begin(), ::tolower);
+    std::transform(lowerExtension.begin(), lowerExtension.end(), lowerExtension.begin(),
+                   [](unsigned char c) { return std::tolower(c); }); // 使用 lambda 兼容性更好
     return codeExtensions.count(lowerExtension); // 使用 count 比 find 更简洁
 }
 
@@ -31,6 +35,7 @@ bool shouldIgnorePath(const fs::path& path)
         "venv", ".venv", "node_modules", ".git", "__pycache__",
         "build", "dist", "bin", "obj", "target", ".idea", ".vs",
         ".vscode", "cmake-build-debug", "cmake-build-release"
+        // 根据需要添加更多忽略的目录或文件名模式
     };
 
     try
@@ -42,6 +47,10 @@ bool shouldIgnorePath(const fs::path& path)
                 return true;
             }
         }
+        // 可以添加对特定文件名的忽略
+        // if (path.has_filename() && ignoreDirs.count(path.filename().string())) {
+        //     return true;
+        // }
     }
     catch (const std::exception& e)
     {
@@ -70,7 +79,9 @@ std::string readFileContent(const fs::path& filePath)
     if (file.bad())
     {
         std::cerr << "错误: 读取文件时出错: " << filePath.string() << std::endl;
-        return ""; // 读取出错返回空
+        // 即使读取出错，可能已经读了一部分，看是否需要返回部分内容
+        // return ""; // 或者返回已读取的部分 content
+        return ""; // 当前选择读取出错返回空
     }
 
     return content;
@@ -79,37 +90,53 @@ std::string readFileContent(const fs::path& filePath)
 std::string escapeXmlChars(const std::string& input)
 {
     std::string result;
-    result.reserve(input.size()); // 先预留原始大小，不够会自动扩展
+    result.reserve(input.size() * 1.1); // 稍微预留多一点空间以减少重分配
 
-    for (unsigned char c : input)
+    for (size_t i = 0; i < input.size(); ++i)
     {
-        // 保留基本可见ASCII字符和允许的控制字符
-        bool isVisibleOrAllowed = (c >= 32 && c <= 126) || c == '\n' || c == '\r' || c == '\t';
+        unsigned char c = input[i];
 
-        // 检查是否是有效的 UTF-8 序列的一部分（这是一个简化检查，不完全严格）
-        // XML 1.0 允许 #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
-        // 此处简化为只过滤掉严格的 C0 控制字符（除了允许的）和 DEL (127)
-        // 对于多字节 UTF-8 字符，其组成字节通常 > 127，这里没有过滤它们
+        // 检查是否是 XML 1.0 不允许的 C0 控制字符 (除了 TAB, LF, CR)
+        // 允许: #x9 (TAB), #xA (LF), #xD (CR), #x20-#xD7FF, #xE000-#xFFFD, #x10000-#x10FFFF
+        // 不允许: #x0-#x8, #xB, #xC, #xE-#x1F, #x7F (DEL)
+        // (注意：这个检查对于多字节 UTF-8 字符可能不完全充分，但能过滤掉主要的非法单字节控制符)
+        if ((c <= 0x08) || (c == 0x0B) || (c == 0x0C) || (c >= 0x0E && c <= 0x1F) || (c == 0x7F))
+        {
+            // 选择忽略这些非法字符
+            continue;
+        }
 
-        if (!isVisibleOrAllowed && c != 127)
+        switch (c)
         {
-            // 可以选择替换为占位符，或者直接忽略
-            // result += '?'; // 例如，替换为问号
-            continue; // 当前选择忽略
+        case '<': result += "<";
+            break;
+        case '>': result += ">";
+            break; // '>' 在 CDATA 中通常不必转义，但为了安全可以转义
+        case '&': result += "&";
+            break;
+        // CDATA 内部 '"' 和 ''' 不需要转义，但如果这段代码也用于属性值，则需要
+        // case '\"': result += """; break;
+        // case '\'': result += "'"; break;
+
+        // 最重要的：处理 CDATA 结束标记 `]]>`
+        // 检查是否即将形成 "]]>"
+        case ']':
+            if (i + 2 < input.size() && input[i + 1] == ']' && input[i + 2] == '>')
+            {
+                // 遇到 "]]>"，将其替换为 "]]>" (或其他方式如 "]]" " >")
+                result += "]]>";
+                i += 2; // 跳过已经处理的 ']' 和 '>'
+            }
+            else
+            {
+                result += c; // 不是 "]]>" 的一部分，直接添加 ']'
+            }
+            break;
+
+        default:
+            result += c; // 其他字符直接添加
+            break;
         }
-        else if (c == '<') result += "<";
-        else if (c == '>') result += ">";
-        else if (c == '&') result += "&";
-            // CDATA 中 " 和 ' 不需要转义，但为了通用性，可以保留
-            // else if (c == '\"') result += """;
-            // else if (c == '\'') result += "'";
-            // 最重要的：CDATA 结束标记 `]]>` 需要特殊处理，虽然概率小
-            // 如果遇到 "]]>"，可以替换为 "]]>" 或拆开写 "]]" " >"
-        else if (result.size() >= 2 && result.substr(result.size() - 2) == "]]" && c == '>')
-        {
-            result += ">"; // 转义 CDATA 结束符中的 '>'
-        }
-        else result += c;
     }
     return result;
 }
@@ -119,7 +146,7 @@ std::string escapeXmlChars(const std::string& input)
 
 /**
  * @brief 将单个文件的内容写入打开的 XML 文件流
- * @param xmlFile 输出 XML 文件流 (必须已打开)
+ * @param xmlFile 输出 XML 文件流 (必须已打开且为二进制模式)
  * @param filePath 要读取内容的文件路径
  * @param pathAttributeValue 在 XML 的 path 属性中使用的值 (通常是相对路径或引用文件中的路径)
  * @return true 如果成功读取并写入, false 如果文件读取失败
@@ -127,64 +154,56 @@ std::string escapeXmlChars(const std::string& input)
 bool writeXmlFileEntry(std::ofstream& xmlFile, const fs::path& filePath, const std::string& pathAttributeValue)
 {
     std::string content = readFileContent(filePath);
-    // 即使 readFileContent 失败并打印错误，我们仍检查这里
+    // readFileContent 内部会报告错误，这里再次检查
     if (content.empty() && !fs::is_empty(filePath))
     {
-        // 如果文件非空但读取内容为空，说明读取失败
+        // 如果文件非空但读取内容为空，说明读取失败（或者文件确实只包含非法字符）
         std::cerr << "警告: 文件 '" << filePath.string() << "' 读取内容为空或失败，跳过写入XML。" << std::endl;
-        return false;
+        return false; // 明确返回失败
     }
 
-    std::string escapedContent = escapeXmlChars(content);
+    // 对 pathAttributeValue 进行 XML 属性值转义 (&, <, >, ", ')
+    std::string escapedPath = pathAttributeValue;
+    std::string tempPath;
+    tempPath.reserve(escapedPath.size());
+    for (char c : escapedPath)
+    {
+        switch (c)
+        {
+        case '&': tempPath += "&";
+            break;
+        case '<': tempPath += "<";
+            break;
+        case '>': tempPath += ">";
+            break; // > 在属性中通常不需转义，但转义更安全
+        case '\"': tempPath += "\"";
+            break;
+        case '\'': tempPath += "'";
+            break;
+        // XML 属性值不允许直接包含换行、制表符等，如果路径中可能出现，需要处理
+        case '\n': tempPath += "\n";
+            break;
+        case '\r': tempPath += "\r";
+            break;
+        case '\t': tempPath += "	";
+            break;
+        default: tempPath += c;
+            break;
+        }
+    }
+    escapedPath = tempPath;
+
 
     // 写入 XML 节点
-    // 对 pathAttributeValue 本身也应该做最小的 XML 属性转义 (&, <, >, ", ')
-    std::string escapedPath = pathAttributeValue;
-    size_t pos = 0;
-    while ((pos = escapedPath.find('&', pos)) != std::string::npos)
-    {
-        escapedPath.replace(pos, 1, "&");
-        pos += 5;
-    }
-    pos = 0;
-    while ((pos = escapedPath.find('<', pos)) != std::string::npos)
-    {
-        escapedPath.replace(pos, 1, "<");
-        pos += 4;
-    }
-    pos = 0;
-    while ((pos = escapedPath.find('>', pos)) != std::string::npos)
-    {
-        escapedPath.replace(pos, 1, ">");
-        pos += 4;
-    }
-    pos = 0;
-    while ((pos = escapedPath.find('\"', pos)) != std::string::npos)
-    {
-        escapedPath.replace(pos, 1, "\"");
-        pos += 6;
-    }
-    pos = 0;
-    while ((pos = escapedPath.find('\'', pos)) != std::string::npos)
-    {
-        escapedPath.replace(pos, 1, "'");
-        pos += 6;
-    }
-
-
-    xmlFile << "  <file path=\"" << escapedPath << "\">\n";
-    // 确保 CDATA 内容前后有换行，更易读，但不是必须
+    xmlFile << "  <file path=\"" << escapedPath << "\">\n"; // 使用 \n
     xmlFile << "    <![CDATA[";
-    // 写入时再检查一次 CDATA 结束符
-    pos = 0;
-    while ((pos = escapedContent.find("]]>", pos)) != std::string::npos)
-    {
-        escapedContent.replace(pos, 3, "]]>");
-        pos += 6; // 移动到替换后的位置之后
-    }
+
+    // !!! 注意：escapeXmlChars 现在应该处理 CDATA 中的 "]]>"
+    std::string escapedContent = escapeXmlChars(content);
     xmlFile << escapedContent;
-    xmlFile << "]]>\n";
-    xmlFile << "  </file>\n";
+
+    xmlFile << "]]>\n"; // 使用 \n
+    xmlFile << "  </file>\n"; // 使用 \n
 
     return true;
 }
@@ -202,15 +221,27 @@ int mergeByDir(const fs::path& rootPath)
     std::cout << "根目录: " << rootPath.string() << std::endl;
 
     // 检查路径是否存在且是目录
-    if (!fs::exists(rootPath) || !fs::is_directory(rootPath))
+    std::error_code ec_check;
+    if (!fs::exists(rootPath, ec_check) || !fs::is_directory(rootPath, ec_check))
     {
-        std::cerr << "错误: " << rootPath.string() << " 不存在或不是一个目录" << std::endl;
+        if (ec_check)
+        {
+            std::cerr << "错误: 检查路径 '" << rootPath.string() << "' 时出错: " << ec_check.message() << std::endl;
+        }
+        else
+        {
+            std::cerr << "错误: " << rootPath.string() << " 不存在或不是一个目录" << std::endl;
+        }
         return 1;
     }
 
     // 创建输出 XML 文件 - 放在根目录旁边
     fs::path outputFile = rootPath.parent_path() / (rootPath.filename().string() + "_merge.xml");
-    std::ofstream xmlFile(outputFile);
+
+    // ****************************************************************
+    // * 修改：以二进制模式打开输出文件，防止自动行尾转换             *
+    // ****************************************************************
+    std::ofstream xmlFile(outputFile, std::ios::out | std::ios::binary);
 
     if (!xmlFile)
     {
@@ -224,60 +255,69 @@ int mergeByDir(const fs::path& rootPath)
     int totalScanned = 0;
     int mergedFiles = 0;
     int skippedFilesNonCode = 0;
-    int skippedFilesIgnored = 0;
+    int skippedFilesIgnored = 0; // 包括忽略路径、读取失败、非文件等
     int skippedDirs = 0;
-    // std::vector<std::string> mergedFilePaths; // 如果需要详细列表可以取消注释
-    // std::vector<std::string> skippedFilePaths;
-    // std::vector<std::string> skippedDirPaths;
 
     // 写入 XML 头
-    xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    xmlFile << "<files source_type=\"directory\" root=\"" << rootPath.string() << "\">\n"; // 添加源类型和根路径信息
+    xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"; // 使用 \n
+    // 转义 rootPath 中的特殊字符用于 XML 属性
+    std::string escapedRootPathStr;
+    std::string rootPathStr = rootPath.string();
+    escapedRootPathStr.reserve(rootPathStr.size());
+    for (char c : rootPathStr)
+    {
+        switch (c)
+        {
+        case '&': escapedRootPathStr += "&";
+            break;
+        case '<': escapedRootPathStr += "<";
+            break;
+        case '>': escapedRootPathStr += ">";
+            break;
+        case '\"': escapedRootPathStr += "\"";
+            break;
+        case '\'': escapedRootPathStr += "'";
+            break;
+        default: escapedRootPathStr += c;
+            break;
+        }
+    }
+    xmlFile << "<files source_type=\"directory\" root=\"" << escapedRootPathStr << "\">\n"; // 使用 \n
 
     // 递归遍历目录
-    // --- 使用传统迭代器循环 ---
     try
     {
-        // 初始化递归目录迭代器
+        // 使用 C++17 的 recursive_directory_iterator
         auto it = fs::recursive_directory_iterator(
             rootPath,
             fs::directory_options::skip_permission_denied // 跳过权限不足的目录
-            // | fs::directory_options::follow_directory_symlink // 可选：如果需要跟随符号链接
         );
-        // 获取结束迭代器（默认构造的迭代器代表结束）
         auto end = fs::recursive_directory_iterator();
 
-        // 循环直到迭代器到达末尾
         while (it != end)
         {
             totalScanned++;
-            std::error_code ec; // 用于检查操作中的错误
-
-            // 获取当前目录条目 (directory_entry)
+            std::error_code ec;
             const fs::directory_entry& entry = *it;
             const fs::path& currentPath = entry.path();
 
             // --- 检查是否忽略 ---
             bool is_ignored = shouldIgnorePath(currentPath);
-            bool is_dir = entry.is_directory(ec); // 检查是否是目录，捕获错误
 
+            // 检查是否是目录，捕获可能发生的错误
+            bool is_dir = entry.is_directory(ec);
             if (ec)
             {
-                // 检查目录类型时出错
                 std::cerr << "警告: 检查条目类型时出错 '" << currentPath.string() << "': " << ec.message() << ", 跳过。" << std::endl;
-                skippedFilesIgnored++; // 归类为忽略/错误
-                // 出错了，尝试安全地递增迭代器并继续
+                skippedFilesIgnored++;
+                // 出错时安全地递增迭代器
                 try
                 {
                     it.increment(ec);
                     if (ec) break;
-                } // 尝试递增，如果递增也出错则退出循环
-                catch (const std::exception& e)
-                {
-                    std::cerr << "迭代器递增时异常: " << e.what() << std::endl;
-                    break;
-                } // 捕获递增异常
-                continue; // 继续下一个条目
+                }
+                catch (...) { break; }
+                continue;
             }
 
             if (is_ignored)
@@ -286,56 +326,57 @@ int mergeByDir(const fs::path& rootPath)
                 {
                     skippedDirs++;
                     std::cout << "跳过忽略目录及其内容: " << currentPath.string() << std::endl;
-                    // *** 在迭代器 it 上调用，阻止进入此目录 ***
+                    // 阻止进入此目录
                     it.disable_recursion_pending();
                 }
                 else
                 {
-                    // 文件或其他在忽略路径下的条目
-                    skippedFilesIgnored++;
+                    skippedFilesIgnored++; // 文件或其他在忽略路径下的条目
                     std::cout << "跳过忽略路径下的条目: " << currentPath.string() << std::endl;
                 }
-                // 跳过了，安全地递增迭代器到下一个条目
+                // 安全地递增迭代器
                 try
                 {
                     it.increment(ec);
                     if (ec) break;
                 }
-                catch (const std::exception& e)
-                {
-                    std::cerr << "迭代器递增时异常: " << e.what() << std::endl;
-                    break;
-                }
+                catch (...) { break; }
                 continue; // 继续下一个条目
             }
 
             // --- 处理非忽略条目 ---
-            bool is_file = entry.is_regular_file(ec); // 检查是否是常规文件
-
+            // 检查是否是常规文件
+            bool is_file = entry.is_regular_file(ec);
             if (ec)
             {
-                // 检查文件类型时出错
                 std::cerr << "警告: 检查文件类型时出错 '" << currentPath.string() << "': " << ec.message() << ", 跳过。" << std::endl;
                 skippedFilesIgnored++;
+                // 出错时安全地递增迭代器
+                try
+                {
+                    it.increment(ec);
+                    if (ec) break;
+                }
+                catch (...) { break; }
+                continue;
             }
-            else if (is_file)
+
+            if (is_file)
             {
-                // 是常规文件
-                std::string extension = currentPath.extension().string();
+                std::string extension = currentPath.has_extension() ? currentPath.extension().string() : "";
                 if (isCodeFile(extension))
                 {
-                    // 是代码文件
                     fs::path relativePath;
                     try
                     {
-                        // 计算相对路径，并进行规范化
+                        // 计算相对路径
                         relativePath = fs::relative(currentPath, rootPath).lexically_normal();
                     }
                     catch (const fs::filesystem_error& rel_err)
                     {
                         std::cerr << "警告: 计算相对路径时出错 for '" << currentPath.string() << "': " << rel_err.what() <<
                             ", 使用绝对路径作为备用。" << std::endl;
-                        relativePath = currentPath; // 备用方案
+                        relativePath = currentPath; // 备用方案，可能需要调整
                     }
 
                     std::cout << "处理文件: " << currentPath.string() << " (相对路径: " << relativePath.string() << ")" <<
@@ -348,81 +389,79 @@ int mergeByDir(const fs::path& rootPath)
                     }
                     else
                     {
-                        skippedFilesIgnored++; // 读取或写入失败也算作跳过
+                        skippedFilesIgnored++; // 读取或写入失败
                     }
                 }
                 else
                 {
-                    // 不是代码文件
                     skippedFilesNonCode++;
                     std::cout << "跳过文件(非代码文件): " << currentPath.string() << std::endl;
                 }
             }
             else if (is_dir)
             {
-                // 是目录（且未被忽略）
+                // 是目录（且未被忽略），迭代器会自动进入
                 std::cout << "进入目录: " << currentPath.string() << std::endl;
-                // 迭代器会自动进入，无需额外操作
             }
             else
             {
-                // 其他类型（符号链接、块设备等，取决于平台和选项）
+                // 其他类型（符号链接等）
                 std::cout << "跳过条目(非文件/目录): " << currentPath.string() << std::endl;
-                skippedFilesIgnored++; // 归类为忽略/不支持
+                skippedFilesIgnored++;
             }
 
             // --- 安全地递增迭代器到下一个条目 ---
-            // （对于未被 continue 跳过的条目）
             try
             {
                 it.increment(ec); // 使用带错误码的版本递增
                 if (ec)
                 {
-                    // 递增过程中出错
                     std::cerr << "警告: 迭代目录时出错: " << ec.message() << " at/after '" << currentPath.string() << "', 停止扫描。"
                         << std::endl;
-                    break; // 决定退出循环
+                    break; // 退出循环
                 }
             }
             catch (const std::exception& e)
             {
-                // 捕获可能的其他异常
                 std::cerr << "警告: 迭代目录时发生异常: " << e.what() << " at/after '" << currentPath.string() << "', 停止扫描。" <<
                     std::endl;
                 break; // 退出循环
             }
         } // end while loop
-    } // end try
+    }
     catch (const fs::filesystem_error& e)
     {
-        // 捕获文件系统相关的异常
         std::cerr << "\n文件系统错误 (迭代器初始化或严重错误): " << e.what() << std::endl;
-        std::cerr << "路径1: " << e.path1().string() << std::endl;
-        if (!e.path2().empty())
-        {
-            std::cerr << "路径2: " << e.path2().string() << std::endl;
-        }
-        // 注意：这里不应该再关闭 xmlFile 或 return，让外部调用者处理
-        throw; // 重新抛出，或者根据需要返回错误码
+        if (!e.path1().empty()) std::cerr << "路径1: " << e.path1().string() << std::endl;
+        if (!e.path2().empty()) std::cerr << "路径2: " << e.path2().string() << std::endl;
+        xmlFile.close(); // 尝试关闭文件
+        return 1; // 返回错误码
     }
     catch (const std::exception& e)
     {
-        // 捕获其他标准异常
         std::cerr << "\n发生标准库错误: " << e.what() << std::endl;
-        throw; // 重新抛出
+        xmlFile.close(); // 尝试关闭文件
+        return 1; // 返回错误码
     }
-    // 注意：原始代码片段的 catch 块在这里结束，但通常函数会在这里有后续处理或返回
 
     // 写入 XML 尾
-    xmlFile << "</files>\n";
+    xmlFile << "</files>\n"; // 使用 \n
     xmlFile.close();
+
+    if (!xmlFile)
+    {
+        // 检查关闭后的状态
+        std::cerr << "错误: 写入或关闭输出文件时出错: " << outputFile.string() << std::endl;
+        return 1; // 返回错误码
+    }
+
 
     // 输出统计信息
     std::cout << "\n==== 目录扫描处理完成 ====\n";
     std::cout << "扫描总条目数: " << totalScanned << std::endl;
     std::cout << "合并的代码文件数: " << mergedFiles << std::endl;
     std::cout << "跳过的文件数 (非代码文件): " << skippedFilesNonCode << std::endl;
-    std::cout << "跳过的文件数 (忽略路径或读取失败): " << skippedFilesIgnored << std::endl;
+    std::cout << "跳过的条目数 (忽略/错误/非文件): " << skippedFilesIgnored << std::endl;
     std::cout << "跳过的忽略目录数: " << skippedDirs << std::endl;
     std::cout << "输出文件: " << outputFile.string() << std::endl;
 
@@ -440,15 +479,28 @@ int mergeByRef(const fs::path& refFilePath)
     std::cout << "引用文件: " << refFilePath.string() << std::endl;
 
     // 检查引用文件是否存在且是普通文件
-    if (!fs::exists(refFilePath) || !fs::is_regular_file(refFilePath))
+    std::error_code ec_check;
+    if (!fs::exists(refFilePath, ec_check) || !fs::is_regular_file(refFilePath, ec_check))
     {
-        std::cerr << "错误: 引用文件 " << refFilePath.string() << " 不存在或不是一个文件" << std::endl;
+        if (ec_check)
+        {
+            std::cerr << "错误: 检查引用文件 '" << refFilePath.string() << "' 时出错: " << ec_check.message() << std::endl;
+        }
+        else
+        {
+            std::cerr << "错误: 引用文件 " << refFilePath.string() << " 不存在或不是一个文件" << std::endl;
+        }
         return 1;
     }
 
     // 创建输出 XML 文件 - 放在引用文件旁边
-    fs::path outputFile = refFilePath.parent_path() / (refFilePath.filename().string() + "_merge.xml");
-    std::ofstream xmlFile(outputFile);
+    fs::path outputFile = refFilePath.parent_path() / (refFilePath.filename().stem().string() + "_merge.xml");
+    // 使用 stem 避免 .txt.xml
+
+    // ****************************************************************
+    // * 修改：以二进制模式打开输出文件，防止自动行尾转换             *
+    // ****************************************************************
+    std::ofstream xmlFile(outputFile, std::ios::out | std::ios::binary);
 
     if (!xmlFile)
     {
@@ -462,20 +514,43 @@ int mergeByRef(const fs::path& refFilePath)
     int mergedFiles = 0;
     int skippedFilesNotFound = 0;
     int skippedFilesNotFile = 0;
-    int skippedFilesReadError = 0;
+    int skippedFilesReadError = 0; // 包括读取内容失败和写入失败
+    int skippedEmptyOrComment = 0;
 
     // 写入 XML 头
-    xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    xmlFile << "<files source_type=\"reference_file\" ref_file=\"" << refFilePath.string() << "\">\n";
-    // 添加源类型和引用文件路径
+    xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"; // 使用 \n
+    // 转义 refFilePath 中的特殊字符用于 XML 属性
+    std::string escapedRefPathStr;
+    std::string refPathStr = refFilePath.string();
+    escapedRefPathStr.reserve(refPathStr.size());
+    for (char c : refPathStr)
+    {
+        switch (c)
+        {
+        case '&': escapedRefPathStr += "&";
+            break;
+        case '<': escapedRefPathStr += "<";
+            break;
+        case '>': escapedRefPathStr += ">";
+            break;
+        case '\"': escapedRefPathStr += "\"";
+            break;
+        case '\'': escapedRefPathStr += "'";
+            break;
+        default: escapedRefPathStr += c;
+            break;
+        }
+    }
+    xmlFile << "<files source_type=\"reference_file\" ref_file=\"" << escapedRefPathStr << "\">\n"; // 使用 \n
 
     // 打开并读取引用文件
-    std::ifstream refFile(refFilePath);
+    std::ifstream refFile(refFilePath); // 默认文本模式读取引用文件是OK的
     if (!refFile)
     {
         std::cerr << "错误: 无法打开引用文件: " << refFilePath.string() << std::endl;
         xmlFile.close(); // 关闭已创建的输出文件
-        fs::remove(outputFile); // 删除空的输出文件
+        // 考虑是否删除空的输出文件
+        // fs::remove(outputFile);
         return 1;
     }
 
@@ -483,21 +558,42 @@ int mergeByRef(const fs::path& refFilePath)
     while (std::getline(refFile, line))
     {
         totalLines++;
-        // 移除可能的 BOM 和前后空白
-        // 简单的空白移除
-        line.erase(0, line.find_first_not_of(" \t\n\r\f\v"));
-        line.erase(line.find_last_not_of(" \t\n\r\f\v") + 1);
-        // 移除 UTF-8 BOM (EF BB BF)
-        if (line.size() >= 3 && (unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)
-            line[2] == 0xBF)
+
+        // 移除可能的行尾 \r
+        if (!line.empty() && line.back() == '\r')
+        {
+            line.pop_back();
+        }
+
+        // 移除前后空白 (包括可能的 BOM 导致的空白感)
+        size_t first = line.find_first_not_of(" \t\n\r\f\v");
+        if (std::string::npos == first)
+        {
+            // 整行都是空白
+            skippedEmptyOrComment++;
+            continue;
+        }
+        size_t last = line.find_last_not_of(" \t\n\r\f\v");
+        line = line.substr(first, (last - first + 1));
+
+        // 移除 UTF-8 BOM (EF BB BF) - 应该在去除空白前做，但这里也行
+        if (line.size() >= 3 && (unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)line[
+            2] == 0xBF)
         {
             line.erase(0, 3);
+            // 再次检查是否变空
+            if (line.empty())
+            {
+                skippedEmptyOrComment++;
+                continue;
+            }
         }
 
 
         if (line.empty() || line[0] == '#')
         {
             // 跳过空行和注释行（以#开头）
+            skippedEmptyOrComment++;
             continue;
         }
 
@@ -509,7 +605,7 @@ int mergeByRef(const fs::path& refFilePath)
         if (ec)
         {
             std::cerr << "警告: 检查路径 '" << line << "' 时出错: " << ec.message() << ", 跳过。" << std::endl;
-            skippedFilesNotFound++; // 或归为其他错误
+            skippedFilesNotFound++; // 归为找不到
             continue;
         }
         if (!exists)
@@ -523,7 +619,7 @@ int mergeByRef(const fs::path& refFilePath)
         if (ec)
         {
             std::cerr << "警告: 检查文件类型 '" << line << "' 时出错: " << ec.message() << ", 跳过。" << std::endl;
-            skippedFilesNotFile++; // 或归为其他错误
+            skippedFilesNotFile++; // 归为非文件
             continue;
         }
         if (!isFile)
@@ -535,7 +631,7 @@ int mergeByRef(const fs::path& refFilePath)
 
         std::cout << "处理文件: " << targetFilePath.string() << " (来自引用文件)" << std::endl;
 
-        // 使用行内原始路径作为 XML 的 path 属性值
+        // 使用行内原始路径(line)作为 XML 的 path 属性值
         if (writeXmlFileEntry(xmlFile, targetFilePath, line))
         {
             mergedFiles++;
@@ -549,18 +645,31 @@ int mergeByRef(const fs::path& refFilePath)
     refFile.close();
 
     // 写入 XML 尾
-    xmlFile << "</files>\n";
+    xmlFile << "</files>\n"; // 使用 \n
     xmlFile.close();
+
+    if (!xmlFile)
+    {
+        // 检查关闭后的状态
+        std::cerr << "错误: 写入或关闭输出文件时出错: " << outputFile.string() << std::endl;
+        return 1; // 返回错误码
+    }
 
     // 输出统计信息
     std::cout << "\n==== 引用文件处理完成 ====\n";
     std::cout << "引用文件总行数: " << totalLines << std::endl;
-    std::cout << "尝试合并的文件数 (来自有效行): " << (mergedFiles + skippedFilesNotFound + skippedFilesNotFile +
-        skippedFilesReadError) << std::endl;
+    std::cout << "跳过的空行/注释行: " << skippedEmptyOrComment << std::endl;
+    int attemptedFiles = totalLines - skippedEmptyOrComment;
+    std::cout << "尝试处理的文件路径数: " << attemptedFiles << std::endl;
     std::cout << "成功合并的文件数: " << mergedFiles << std::endl;
     std::cout << "跳过的文件数 (未找到): " << skippedFilesNotFound << std::endl;
     std::cout << "跳过的文件数 (非文件): " << skippedFilesNotFile << std::endl;
-    std::cout << "跳过的文件数 (读取错误): " << skippedFilesReadError << std::endl;
+    std::cout << "跳过的文件数 (读取/写入错误): " << skippedFilesReadError << std::endl;
+    // 验证统计
+    if (attemptedFiles != mergedFiles + skippedFilesNotFound + skippedFilesNotFile + skippedFilesReadError)
+    {
+        std::cout << "警告: 统计数字加总不匹配尝试处理的文件数，请检查日志。" << std::endl;
+    }
     std::cout << "输出文件: " << outputFile.string() << std::endl;
 
     return 0;
@@ -575,17 +684,35 @@ int main(int argc, char* argv[])
     if (argc != 2)
     {
         std::cerr << "用法: " << argv[0] << " <目录路径 | 引用文件路径>" << std::endl;
-        std::cerr << "  <目录路径>: 扫描该目录下所有代码文件。" << std::endl;
-        std::cerr << "  <引用文件路径>: 读取该文件中列出的文件路径进行合并。" << std::endl;
+        std::cerr << "  <目录路径>: 扫描该目录下所有符合条件的代码文件。" << std::endl;
+        std::cerr << "  <引用文件路径>: 读取该文本文件中列出的文件路径进行合并 (一行一个路径, '#'开头或空行为注释/忽略)。" << std::endl;
         std::cout << "\n按任意键退出..." << std::endl;
+        while (_kbhit()) _getch(); // 清空键盘缓冲区
+        _getch(); // 等待按键
+        return 1;
+    }
+
+    fs::path inputPath;
+    try
+    {
+        // 处理可能的UTF-8路径（虽然Windows下main参数是ANSI，但这是一种尝试）
+        // 或者直接使用 fs::u8path(argv[1]) 如果你的环境和编译器支持得好
+        inputPath = argv[1];
+        // 规范化路径，去除冗余的 . 或 ..
+        inputPath = fs::absolute(inputPath).lexically_normal();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "错误: 处理输入路径时出错: " << e.what() << std::endl;
+        while (_kbhit()) _getch();
         _getch();
         return 1;
     }
 
-    fs::path inputPath = argv[1];
-    int result = 1; // 默认失败
 
+    int result = 1; // 默认失败
     std::error_code ec;
+
     if (fs::is_directory(inputPath, ec))
     {
         result = mergeByDir(inputPath);
@@ -596,35 +723,42 @@ int main(int argc, char* argv[])
     }
     else
     {
+        // fs::exists 检查已经包含在 is_directory 和 is_regular_file 内部了
+        // 如果两者都返回 false，需要看 ec
         if (ec)
         {
             // 检查路径时发生错误
-            std::cerr << "错误: 无法访问路径 '" << inputPath.string() << "': " << ec.message() << std::endl;
-        }
-        else if (fs::exists(inputPath))
-        {
-            // 路径存在但不是目录也不是文件
-            std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 不是一个目录也不是一个常规文件。" << std::endl;
+            std::cerr << "错误: 无法访问或确定路径类型 '" << inputPath.string() << "': " << ec.message() << std::endl;
         }
         else
         {
-            // 路径不存在
-            std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 不存在。" << std::endl;
+            // 路径存在但既不是目录也不是常规文件，或者路径不存在
+            if (fs::exists(inputPath))
+            {
+                // 再次检查是否存在但类型不对
+                std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 存在但不是一个目录或常规文件。" << std::endl;
+            }
+            else
+            {
+                std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 不存在。" << std::endl;
+            }
         }
         result = 1; // 确保返回错误码
     }
 
-    if (ec && result != 0)
+    // 如果上面的 is_directory 或 is_regular_file 检查本身就出错了，ec 会被设置
+    if (ec && result != 0) // 检查 ec 是否有错误，并且我们还没有成功执行
     {
-        // 如果之前的 is_directory/is_regular_file 检查本身就出错了
-        std::cerr << "错误: 检查输入路径类型时出错: " << ec.message() << std::endl;
+        // 这个分支理论上应该被上面的 else 分支覆盖，但作为双重保险
+        std::cerr << "错误: 检查输入路径 '" << inputPath.string() << "' 类型时出错: " << ec.message() << std::endl;
         result = 1; // 确保返回错误码
     }
 
 
     // 等待用户按任意键退出
-    std::cout << "\n处理结束，按任意键退出..." << std::endl;
-    _getch();
+    std::cout << "\n处理结束 (" << (result == 0 ? "成功" : "失败") << ")，按任意键退出..." << std::endl;
+    while (_kbhit()) _getch(); // 清空任何可能在处理期间按下的键
+    _getch(); // 等待用户按键
 
     return result; // 返回处理函数的结果
 }
