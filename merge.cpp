@@ -235,101 +235,183 @@ int mergeByDir(const fs::path& rootPath)
     xmlFile << "<files source_type=\"directory\" root=\"" << rootPath.string() << "\">\n"; // 添加源类型和根路径信息
 
     // 递归遍历目录
+    // --- 使用传统迭代器循环 ---
     try
     {
-        for (const auto& entry : fs::recursive_directory_iterator(
-                 rootPath, fs::directory_options::skip_permission_denied))
+        // 初始化递归目录迭代器
+        auto it = fs::recursive_directory_iterator(
+            rootPath,
+            fs::directory_options::skip_permission_denied // 跳过权限不足的目录
+            // | fs::directory_options::follow_directory_symlink // 可选：如果需要跟随符号链接
+        );
+        // 获取结束迭代器（默认构造的迭代器代表结束）
+        auto end = fs::recursive_directory_iterator();
+
+        // 循环直到迭代器到达末尾
+        while (it != end)
         {
             totalScanned++;
-            const auto& currentPath = entry.path();
+            std::error_code ec; // 用于检查操作中的错误
 
-            // 检查是否应该忽略整个路径（基于目录名）
-            if (shouldIgnorePath(currentPath))
+            // 获取当前目录条目 (directory_entry)
+            const fs::directory_entry& entry = *it;
+            const fs::path& currentPath = entry.path();
+
+            // --- 检查是否忽略 ---
+            bool is_ignored = shouldIgnorePath(currentPath);
+            bool is_dir = entry.is_directory(ec); // 检查是否是目录，捕获错误
+
+            if (ec)
             {
-                if (fs::is_directory(entry))
+                // 检查目录类型时出错
+                std::cerr << "警告: 检查条目类型时出错 '" << currentPath.string() << "': " << ec.message() << ", 跳过。" << std::endl;
+                skippedFilesIgnored++; // 归类为忽略/错误
+                // 出错了，尝试安全地递增迭代器并继续
+                try
                 {
-                    skippedDirs++;
-                    // skippedDirPaths.push_back(currentPath.string());
-                    std::cout << "跳过忽略目录及其内容: " << currentPath.string() << std::endl;
-                    // 告诉迭代器不要进入这个目录 (如果支持的话，C++17标准迭代器本身不直接支持跳过)
-                    // 对于标准库，通常需要检查每个文件/子目录是否在忽略路径下
-                    // 如果目录被忽略，其下的文件也会在文件检查时被 shouldIgnorePath 捕获
-                    if (fs::is_directory(entry))
-                    {
-                        // 确保确实是目录再操作
-                        entry.disable_recursion_pending(); // 尝试阻止进入下一层
-                    }
-                }
-                else if (fs::is_regular_file(entry))
+                    it.increment(ec);
+                    if (ec) break;
+                } // 尝试递增，如果递增也出错则退出循环
+                catch (const std::exception& e)
                 {
-                    skippedFilesIgnored++;
-                    // skippedFilePaths.push_back(currentPath.string());
-                    std::cout << "跳过文件(位于忽略目录): " << currentPath.string() << std::endl;
-                }
-                continue; // 跳过这个条目
+                    std::cerr << "迭代器递增时异常: " << e.what() << std::endl;
+                    break;
+                } // 捕获递增异常
+                continue; // 继续下一个条目
             }
 
-            // 处理文件
-            if (fs::is_regular_file(entry))
+            if (is_ignored)
             {
-                std::string extension = currentPath.extension().string();
+                if (is_dir)
+                {
+                    skippedDirs++;
+                    std::cout << "跳过忽略目录及其内容: " << currentPath.string() << std::endl;
+                    // *** 在迭代器 it 上调用，阻止进入此目录 ***
+                    it.disable_recursion_pending();
+                }
+                else
+                {
+                    // 文件或其他在忽略路径下的条目
+                    skippedFilesIgnored++;
+                    std::cout << "跳过忽略路径下的条目: " << currentPath.string() << std::endl;
+                }
+                // 跳过了，安全地递增迭代器到下一个条目
+                try
+                {
+                    it.increment(ec);
+                    if (ec) break;
+                }
+                catch (const std::exception& e)
+                {
+                    std::cerr << "迭代器递增时异常: " << e.what() << std::endl;
+                    break;
+                }
+                continue; // 继续下一个条目
+            }
 
-                // 检查是否是代码文件
+            // --- 处理非忽略条目 ---
+            bool is_file = entry.is_regular_file(ec); // 检查是否是常规文件
+
+            if (ec)
+            {
+                // 检查文件类型时出错
+                std::cerr << "警告: 检查文件类型时出错 '" << currentPath.string() << "': " << ec.message() << ", 跳过。" << std::endl;
+                skippedFilesIgnored++;
+            }
+            else if (is_file)
+            {
+                // 是常规文件
+                std::string extension = currentPath.extension().string();
                 if (isCodeFile(extension))
                 {
-                    // 获取相对路径
-                    fs::path relativePath = fs::relative(currentPath, rootPath);
+                    // 是代码文件
+                    fs::path relativePath;
+                    try
+                    {
+                        // 计算相对路径，并进行规范化
+                        relativePath = fs::relative(currentPath, rootPath).lexically_normal();
+                    }
+                    catch (const fs::filesystem_error& rel_err)
+                    {
+                        std::cerr << "警告: 计算相对路径时出错 for '" << currentPath.string() << "': " << rel_err.what() <<
+                            ", 使用绝对路径作为备用。" << std::endl;
+                        relativePath = currentPath; // 备用方案
+                    }
 
                     std::cout << "处理文件: " << currentPath.string() << " (相对路径: " << relativePath.string() << ")" <<
                         std::endl;
 
+                    // 写入 XML 条目
                     if (writeXmlFileEntry(xmlFile, currentPath, relativePath.string()))
                     {
                         mergedFiles++;
-                        // mergedFilePaths.push_back(currentPath.string());
                     }
                     else
                     {
-                        skippedFilesIgnored++; // 读取失败也算作跳过
-                        // skippedFilePaths.push_back(currentPath.string());
+                        skippedFilesIgnored++; // 读取或写入失败也算作跳过
                     }
                 }
                 else
                 {
-                    // 不是代码文件，跳过
+                    // 不是代码文件
                     skippedFilesNonCode++;
-                    // skippedFilePaths.push_back(currentPath.string());
                     std::cout << "跳过文件(非代码文件): " << currentPath.string() << std::endl;
                 }
             }
-            else if (fs::is_directory(entry))
+            else if (is_dir)
             {
+                // 是目录（且未被忽略）
                 std::cout << "进入目录: " << currentPath.string() << std::endl;
-                // 目录本身不需要特殊处理，迭代器会自动进入
+                // 迭代器会自动进入，无需额外操作
             }
             else
             {
-                // 其他类型的文件（如符号链接等）
+                // 其他类型（符号链接、块设备等，取决于平台和选项）
                 std::cout << "跳过条目(非文件/目录): " << currentPath.string() << std::endl;
+                skippedFilesIgnored++; // 归类为忽略/不支持
             }
-        } // end for loop
-    }
+
+            // --- 安全地递增迭代器到下一个条目 ---
+            // （对于未被 continue 跳过的条目）
+            try
+            {
+                it.increment(ec); // 使用带错误码的版本递增
+                if (ec)
+                {
+                    // 递增过程中出错
+                    std::cerr << "警告: 迭代目录时出错: " << ec.message() << " at/after '" << currentPath.string() << "', 停止扫描。"
+                        << std::endl;
+                    break; // 决定退出循环
+                }
+            }
+            catch (const std::exception& e)
+            {
+                // 捕获可能的其他异常
+                std::cerr << "警告: 迭代目录时发生异常: " << e.what() << " at/after '" << currentPath.string() << "', 停止扫描。" <<
+                    std::endl;
+                break; // 退出循环
+            }
+        } // end while loop
+    } // end try
     catch (const fs::filesystem_error& e)
     {
-        std::cerr << "\n文件系统错误: " << e.what() << std::endl;
+        // 捕获文件系统相关的异常
+        std::cerr << "\n文件系统错误 (迭代器初始化或严重错误): " << e.what() << std::endl;
         std::cerr << "路径1: " << e.path1().string() << std::endl;
         if (!e.path2().empty())
         {
             std::cerr << "路径2: " << e.path2().string() << std::endl;
         }
-        xmlFile.close(); // 确保关闭文件
-        return 1;
-    } catch (const std::exception& e)
-    {
-        std::cerr << "\n发生错误: " << e.what() << std::endl;
-        xmlFile.close();
-        return 1;
+        // 注意：这里不应该再关闭 xmlFile 或 return，让外部调用者处理
+        throw; // 重新抛出，或者根据需要返回错误码
     }
+    catch (const std::exception& e)
+    {
+        // 捕获其他标准异常
+        std::cerr << "\n发生标准库错误: " << e.what() << std::endl;
+        throw; // 重新抛出
+    }
+    // 注意：原始代码片段的 catch 块在这里结束，但通常函数会在这里有后续处理或返回
 
     // 写入 XML 尾
     xmlFile << "</files>\n";
