@@ -30,7 +30,7 @@ bool shouldIgnorePath(const fs::path& path)
     static const std::set<std::string> ignoreDirs = {
         "venv", ".venv", "node_modules", ".git", "__pycache__",
         "build", "dist", "bin", "obj", "target", ".idea", ".vs",
-        ".vscode" // 添加 .vscode 示例
+        ".vscode", "cmake-build-debug", "cmake-build-release"
     };
 
     try
