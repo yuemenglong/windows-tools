@@ -28,6 +28,9 @@ bool isCodeFile(const std::string& extension)
     return codeExtensions.count(lowerExtension); // 使用 count 比 find 更简洁
 }
 
+// 新增：根据文件名合并特定文件
+static const std::set<std::string> specialFileNames = {"CMakeLists.txt"};
+
 // 这个函数主要用于目录扫描时的过滤
 bool shouldIgnorePath(const fs::path& path)
 {
@@ -364,7 +367,7 @@ int mergeByDir(const fs::path& rootPath)
             if (is_file)
             {
                 std::string extension = currentPath.has_extension() ? currentPath.extension().string() : "";
-                if (isCodeFile(extension))
+                if (isCodeFile(extension) || specialFileNames.count(currentPath.filename().string()))
                 {
                     fs::path relativePath;
                     try
