@@ -680,85 +680,97 @@ int mergeByRef(const fs::path& refFilePath)
 
 int main(int argc, char* argv[])
 {
-    // 检查命令行参数
-    if (argc != 2)
+    fs::path inputPath;
+    int result = 1; // 默认失败
+    std::error_code ec;
+
+    if (argc == 1)
+    {
+        // 无参数，提示用户输入目录路径
+        std::string dirInput;
+        std::cout << "请输入要扫描的目录路径: ";
+        std::getline(std::cin, dirInput);
+        if (dirInput.empty())
+        {
+            std::cerr << "未输入任何路径，程序退出。" << std::endl;
+            std::cout << "\n按任意键退出..." << std::endl;
+            while (_kbhit()) _getch();
+            _getch();
+            return 1;
+        }
+        try
+        {
+            inputPath = fs::absolute(dirInput).lexically_normal();
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "错误: 处理输入路径时出错: " << e.what() << std::endl;
+            while (_kbhit()) _getch();
+            _getch();
+            return 1;
+        }
+        result = mergeByDir(inputPath);
+    }
+    else if (argc == 2)
+    {
+        try
+        {
+            inputPath = argv[1];
+            inputPath = fs::absolute(inputPath).lexically_normal();
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "错误: 处理输入路径时出错: " << e.what() << std::endl;
+            while (_kbhit()) _getch();
+            _getch();
+            return 1;
+        }
+        if (fs::is_directory(inputPath, ec))
+        {
+            result = mergeByDir(inputPath);
+        }
+        else if (fs::is_regular_file(inputPath, ec))
+        {
+            result = mergeByRef(inputPath);
+        }
+        else
+        {
+            if (ec)
+            {
+                std::cerr << "错误: 无法访问或确定路径类型 '" << inputPath.string() << "': " << ec.message() << std::endl;
+            }
+            else
+            {
+                if (fs::exists(inputPath))
+                {
+                    std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 存在但不是一个目录或常规文件。" << std::endl;
+                }
+                else
+                {
+                    std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 不存在。" << std::endl;
+                }
+            }
+            result = 1;
+        }
+        if (ec && result != 0)
+        {
+            std::cerr << "错误: 检查输入路径 '" << inputPath.string() << "' 类型时出错: " << ec.message() << std::endl;
+            result = 1;
+        }
+    }
+    else
     {
         std::cerr << "用法: " << argv[0] << " <目录路径 | 引用文件路径>" << std::endl;
         std::cerr << "  <目录路径>: 扫描该目录下所有符合条件的代码文件。" << std::endl;
         std::cerr << "  <引用文件路径>: 读取该文本文件中列出的文件路径进行合并 (一行一个路径, '#'开头或空行为注释/忽略)。" << std::endl;
         std::cout << "\n按任意键退出..." << std::endl;
-        while (_kbhit()) _getch(); // 清空键盘缓冲区
-        _getch(); // 等待按键
-        return 1;
-    }
-
-    fs::path inputPath;
-    try
-    {
-        // 处理可能的UTF-8路径（虽然Windows下main参数是ANSI，但这是一种尝试）
-        // 或者直接使用 fs::u8path(argv[1]) 如果你的环境和编译器支持得好
-        inputPath = argv[1];
-        // 规范化路径，去除冗余的 . 或 ..
-        inputPath = fs::absolute(inputPath).lexically_normal();
-    }
-    catch (const std::exception& e)
-    {
-        std::cerr << "错误: 处理输入路径时出错: " << e.what() << std::endl;
         while (_kbhit()) _getch();
         _getch();
         return 1;
     }
 
-
-    int result = 1; // 默认失败
-    std::error_code ec;
-
-    if (fs::is_directory(inputPath, ec))
-    {
-        result = mergeByDir(inputPath);
-    }
-    else if (fs::is_regular_file(inputPath, ec))
-    {
-        result = mergeByRef(inputPath);
-    }
-    else
-    {
-        // fs::exists 检查已经包含在 is_directory 和 is_regular_file 内部了
-        // 如果两者都返回 false，需要看 ec
-        if (ec)
-        {
-            // 检查路径时发生错误
-            std::cerr << "错误: 无法访问或确定路径类型 '" << inputPath.string() << "': " << ec.message() << std::endl;
-        }
-        else
-        {
-            // 路径存在但既不是目录也不是常规文件，或者路径不存在
-            if (fs::exists(inputPath))
-            {
-                // 再次检查是否存在但类型不对
-                std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 存在但不是一个目录或常规文件。" << std::endl;
-            }
-            else
-            {
-                std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 不存在。" << std::endl;
-            }
-        }
-        result = 1; // 确保返回错误码
-    }
-
-    // 如果上面的 is_directory 或 is_regular_file 检查本身就出错了，ec 会被设置
-    if (ec && result != 0) // 检查 ec 是否有错误，并且我们还没有成功执行
-    {
-        // 这个分支理论上应该被上面的 else 分支覆盖，但作为双重保险
-        std::cerr << "错误: 检查输入路径 '" << inputPath.string() << "' 类型时出错: " << ec.message() << std::endl;
-        result = 1; // 确保返回错误码
-    }
-
-
-    // 等待用户按任意键退出
     std::cout << "\n处理结束 (" << (result == 0 ? "成功" : "失败") << ")，按任意键退出..." << std::endl;
-    while (_kbhit()) _getch(); // 清空任何可能在处理期间按下的键
-    _getch(); // 等待用户按键
-
-    return result; // 返回处理函数的结果
+    while (_kbhit()) _getch();
+    _getch();
+    return result;
 }
