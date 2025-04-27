@@ -15,9 +15,9 @@ namespace fs = std::filesystem;
 
 bool isCodeFile(const std::string &extension) {
   static const std::set<std::string> codeExtensions = {
-      ".c",  ".cpp", ".h",  ".hpp", ".cc",   ".cxx", ".hxx", ".java",
-      ".py", ".js",  ".ts", ".go",  ".dart", "kt",   ".cs", // 添加了 .cs 示例
-      // 根据需要添加更多扩展名
+      ".c",    ".cpp",  ".h",  ".hpp",    ".cc",        ".cxx",
+      ".hxx",  ".java", ".py", ".js",     ".ts",        ".go",
+      ".dart", "kt",    ".cs", ".gradle", ".properties"
   };
   // 将扩展名转为小写进行比较，更健壮
   std::string lowerExtension = extension;
