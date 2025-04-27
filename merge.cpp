@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <regex>     // 新增: 用于正则表达式
 #include <set>
 #include <sstream> // 鐢ㄤ簬瀛楃涓叉祦澶勭悊锛堝鏋滈渶瑕佹洿澶嶆潅鐨勮瑙ｆ瀽锛?#10;#include <stdexcept> // 鐢ㄤ簬 std::exception
 #include <string>
@@ -10,6 +11,36 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+
+// --- 全局配置 ---
+
+// 忽略的目录和文件模式
+// 使用正则表达式匹配，更灵活
+static const std::vector<std::regex> ignorePatterns = {
+    std::regex("venv"),
+    std::regex("\\.venv"),
+    std::regex("node_modules"),
+    std::regex("\\.git"),
+    std::regex("__pycache__"),
+    std::regex("build"),
+    std::regex("dist"),
+    std::regex("bin"),
+    std::regex("obj"),
+    std::regex("target"),
+    std::regex("\\.idea"),
+    std::regex("\\.vs"),
+    std::regex("\\.vscode"),
+    std::regex("cmake-build-debug"),
+    std::regex("cmake-build-release"),
+    std::regex("\\..+")  // 新增: 匹配以.开头的任何目录/文件（.和..除外）
+};
+
+// 特殊文件名模式 - 使用正则表达式匹配
+static const std::vector<std::regex> specialFilePatterns = {
+    std::regex("CMakeLists\\.txt", std::regex::icase),  // 不区分大小写
+    std::regex("README\\.md", std::regex::icase),       // 不区分大小写
+    std::regex("readme\\.txt", std::regex::icase)       // 不区分大小写
+};
 
 // --- 辅助函数 (基本不变) ---
 
@@ -28,46 +59,38 @@ bool isCodeFile(const std::string &extension) {
   return codeExtensions.count(lowerExtension); // 使用 count 比 find 更简洁
 }
 
-// 新增：根据文件名合并特定文件
-static const std::set<std::string> specialFileNames = {
-    "CMakeLists.txt", "README.md", "readme.md", "readme.txt"};
-
 // 这个函数主要用于目录扫描时的过滤
 bool shouldIgnorePath(const fs::path &path) {
-  static const std::set<std::string> ignoreDirs = {
-      "venv",
-      ".venv",
-      "node_modules",
-      ".git",
-      "__pycache__",
-      "build",
-      "dist",
-      "bin",
-      "obj",
-      "target",
-      ".idea",
-      ".vs",
-      ".vscode",
-      "cmake-build-debug",
-      "cmake-build-release"
-      // 根据需要添加更多忽略的目录或文件名模式
-  };
-
   try {
+    // 忽略特殊目录 . 和 .. (虽然递归迭代器通常会跳过这些)
+    if (path.filename() == "." || path.filename() == "..") {
+      return true;
+    }
+    
+    // 检查路径的每个部分是否匹配任何忽略模式
     for (const auto &part : path) {
-      if (ignoreDirs.count(part.string())) {
-        return true;
+      std::string partStr = part.string();
+      for (const auto &pattern : ignorePatterns) {
+        if (std::regex_match(partStr, pattern)) {
+          return true;
+        }
       }
     }
-    // 可以添加对特定文件名的忽略
-    // if (path.has_filename() && ignoreDirs.count(path.filename().string())) {
-    //     return true;
-    // }
   } catch (const std::exception &e) {
     // 路径迭代可能因特殊字符等失败
     std::cerr << "警告: 检查路径时出错 '" << path.string() << "': " << e.what()
               << std::endl;
     return true; // 出错时倾向于忽略
+  }
+  return false;
+}
+
+// 检查文件是否匹配特殊文件模式
+bool isSpecialFile(const std::string &filename) {
+  for (const auto &pattern : specialFilePatterns) {
+    if (std::regex_match(filename, pattern)) {
+      return true;
+    }
   }
   return false;
 }
@@ -379,7 +402,7 @@ int mergeByDir(const fs::path &rootPath) {
         std::string extension =
             currentPath.has_extension() ? currentPath.extension().string() : "";
         if (isCodeFile(extension) ||
-            specialFileNames.count(currentPath.filename().string())) {
+            isSpecialFile(currentPath.filename().string())) {
           fs::path relativePath;
           try {
             // 计算相对路径
