@@ -17,44 +17,45 @@ namespace fs = std::filesystem;
 // 忽略的目录和文件模式
 // 使用正则表达式匹配，更灵活
 static const std::vector<std::regex> ignorePatterns = {
-    std::regex("venv"),
-    std::regex("\\.venv"),
-    std::regex("node_modules"),
-    std::regex("\\.git"),
-    std::regex("__pycache__"),
-    std::regex("build"),
-    std::regex("dist"),
-    std::regex("bin"),
-    std::regex("obj"),
-    std::regex("target"),
-    std::regex("\\.idea"),
-    std::regex("\\.vs"),
-    std::regex("\\.vscode"),
-    std::regex("cmake-build-debug"),
-    std::regex("cmake-build-release"),
-    std::regex("\\..+") // 新增: 匹配以.开头的任何目录/文件（.和..除外）
+  std::regex("venv"),
+  std::regex("\\.venv"),
+  std::regex("node_modules"),
+  std::regex("\\.git"),
+  std::regex("__pycache__"),
+  std::regex("build"),
+  std::regex("dist"),
+  std::regex("bin"),
+  std::regex("obj"),
+  std::regex("target"),
+  std::regex("\\.idea"),
+  std::regex("\\.vs"),
+  std::regex("\\.vscode"),
+  std::regex("cmake-build-debug"),
+  std::regex("cmake-build-release"),
+  std::regex("\\..+") // 新增: 匹配以.开头的任何目录/文件（.和..除外）
 };
 
 // 特殊文件名模式 - 使用正则表达式匹配
 static const std::vector<std::regex> specialFilePatterns = {
-    std::regex("CMakeLists\\.txt", std::regex::icase), // 不区分大小写
-    std::regex("README\\.md", std::regex::icase),      // 不区分大小写
-    std::regex("readme\\.txt", std::regex::icase)      // 不区分大小写
+  std::regex("CMakeLists\\.txt", std::regex::icase), // 不区分大小写
+  std::regex("README\\.md", std::regex::icase),      // 不区分大小写
+  std::regex("readme\\.txt", std::regex::icase)      // 不区分大小写
 };
 
 // --- 辅助函数 (基本不变) ---
 
 bool isCodeFile(const std::string &extension) {
   static const std::set<std::string> codeExtensions = {
-      ".c",    ".cpp",  ".h",   ".hpp", ".cc",     ".cxx",
-      ".hxx",  ".java", ".py",  ".js",  ".ts",     ".go",
-      ".dart", ".kt",   ".kts", ".cs",  ".gradle", ".properties"};
+    ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx",
+    ".hxx", ".java", ".py", ".js", ".ts", ".go",
+    ".dart", ".kt", ".kts", ".cs", ".gradle", ".properties",
+    ".yml", ".yaml"};
   // 将扩展名转为小写进行比较，更健壮
   std::string lowerExtension = extension;
   std::transform(lowerExtension.begin(), lowerExtension.end(),
                  lowerExtension.begin(), [](unsigned char c) {
-                   return std::tolower(c);
-                 });                           // 使用 lambda 兼容性更好
+      return std::tolower(c);
+    });                           // 使用 lambda 兼容性更好
   return codeExtensions.count(lowerExtension); // 使用 count 比 find 更简洁
 }
 
@@ -67,9 +68,9 @@ bool shouldIgnorePath(const fs::path &path) {
     }
 
     // 检查路径的每个部分是否匹配任何忽略模式
-    for (const auto &part : path) {
+    for (const auto &part: path) {
       std::string partStr = part.string();
-      for (const auto &pattern : ignorePatterns) {
+      for (const auto &pattern: ignorePatterns) {
         if (std::regex_match(partStr, pattern)) {
           return true;
         }
@@ -86,7 +87,7 @@ bool shouldIgnorePath(const fs::path &path) {
 
 // 检查文件是否匹配特殊文件模式
 bool isSpecialFile(const std::string &filename) {
-  for (const auto &pattern : specialFilePatterns) {
+  for (const auto &pattern: specialFilePatterns) {
     if (std::regex_match(filename, pattern)) {
       return true;
     }
@@ -136,34 +137,34 @@ std::string escapeXmlChars(const std::string &input) {
     }
 
     switch (c) {
-    case '<':
-      result += "<";
-      break;
-    case '>':
-      result += ">";
-      break; // '>' 在 CDATA 中通常不必转义，但为了安全可以转义
-    case '&':
-      result += "&";
-      break;
-    // CDATA 内部 '"' 和 ''' 不需要转义，但如果这段代码也用于属性值，则需要
-    // case '\"': result += """; break;
-    // case '\'': result += "'"; break;
+      case '<':
+        result += "<";
+        break;
+      case '>':
+        result += ">";
+        break; // '>' 在 CDATA 中通常不必转义，但为了安全可以转义
+      case '&':
+        result += "&";
+        break;
+        // CDATA 内部 '"' 和 ''' 不需要转义，但如果这段代码也用于属性值，则需要
+        // case '\"': result += """; break;
+        // case '\'': result += "'"; break;
 
-    // 最重要的：处理 CDATA 结束标记 `]]>`
-    // 检查是否即将形成 "]]>"
-    case ']':
-      if (i + 2 < input.size() && input[i + 1] == ']' && input[i + 2] == '>') {
-        // 遇到 "]]>"，将其替换为 "]]>" (或其他方式如 "]]" " >")
-        result += "]]>";
-        i += 2; // 跳过已经处理的 ']' 和 '>'
-      } else {
-        result += c; // 不是 "]]>" 的一部分，直接添加 ']'
-      }
-      break;
+        // 最重要的：处理 CDATA 结束标记 `]]>`
+        // 检查是否即将形成 "]]>"
+      case ']':
+        if (i + 2 < input.size() && input[i + 1] == ']' && input[i + 2] == '>') {
+          // 遇到 "]]>"，将其替换为 "]]>" (或其他方式如 "]]" " >")
+          result += "]]>";
+          i += 2; // 跳过已经处理的 ']' 和 '>'
+        } else {
+          result += c; // 不是 "]]>" 的一部分，直接添加 ']'
+        }
+        break;
 
-    default:
-      result += c; // 其他字符直接添加
-      break;
+      default:
+        result += c; // 其他字符直接添加
+        break;
     }
   }
   return result;
@@ -194,36 +195,36 @@ bool writeXmlFileEntry(std::ofstream &xmlFile, const fs::path &filePath,
   std::string escapedPath = pathAttributeValue;
   std::string tempPath;
   tempPath.reserve(escapedPath.size());
-  for (char c : escapedPath) {
+  for (char c: escapedPath) {
     switch (c) {
-    case '&':
-      tempPath += "&";
-      break;
-    case '<':
-      tempPath += "<";
-      break;
-    case '>':
-      tempPath += ">";
-      break; // > 在属性中通常不需转义，但转义更安全
-    case '\"':
-      tempPath += "\"";
-      break;
-    case '\'':
-      tempPath += "'";
-      break;
-    // XML 属性值不允许直接包含换行、制表符等，如果路径中可能出现，需要处理
-    case '\n':
-      tempPath += "\n";
-      break;
-    case '\r':
-      tempPath += "\r";
-      break;
-    case '\t':
-      tempPath += "	";
-      break;
-    default:
-      tempPath += c;
-      break;
+      case '&':
+        tempPath += "&";
+        break;
+      case '<':
+        tempPath += "<";
+        break;
+      case '>':
+        tempPath += ">";
+        break; // > 在属性中通常不需转义，但转义更安全
+      case '\"':
+        tempPath += "\"";
+        break;
+      case '\'':
+        tempPath += "'";
+        break;
+        // XML 属性值不允许直接包含换行、制表符等，如果路径中可能出现，需要处理
+      case '\n':
+        tempPath += "\n";
+        break;
+      case '\r':
+        tempPath += "\r";
+        break;
+      case '\t':
+        tempPath += "	";
+        break;
+      default:
+        tempPath += c;
+        break;
     }
   }
   escapedPath = tempPath;
@@ -269,7 +270,7 @@ int mergeByDir(const fs::path &rootPath) {
 
   // 创建输出 XML 文件 - 放在根目录旁边
   fs::path outputFile =
-      rootPath.parent_path() / (rootPath.filename().string() + "_merge.xml");
+    rootPath.parent_path() / (rootPath.filename().string() + "_merge.xml");
 
   // ****************************************************************
   // * 修改：以二进制模式打开输出文件，防止自动行尾转换             *
@@ -296,26 +297,26 @@ int mergeByDir(const fs::path &rootPath) {
   std::string escapedRootPathStr;
   std::string rootPathStr = rootPath.string();
   escapedRootPathStr.reserve(rootPathStr.size());
-  for (char c : rootPathStr) {
+  for (char c: rootPathStr) {
     switch (c) {
-    case '&':
-      escapedRootPathStr += "&";
-      break;
-    case '<':
-      escapedRootPathStr += "<";
-      break;
-    case '>':
-      escapedRootPathStr += ">";
-      break;
-    case '\"':
-      escapedRootPathStr += "\"";
-      break;
-    case '\'':
-      escapedRootPathStr += "'";
-      break;
-    default:
-      escapedRootPathStr += c;
-      break;
+      case '&':
+        escapedRootPathStr += "&";
+        break;
+      case '<':
+        escapedRootPathStr += "<";
+        break;
+      case '>':
+        escapedRootPathStr += ">";
+        break;
+      case '\"':
+        escapedRootPathStr += "\"";
+        break;
+      case '\'':
+        escapedRootPathStr += "'";
+        break;
+      default:
+        escapedRootPathStr += c;
+        break;
     }
   }
   xmlFile << "<files source_type=\"directory\" root=\"" << escapedRootPathStr
@@ -325,8 +326,8 @@ int mergeByDir(const fs::path &rootPath) {
   try {
     // 使用 C++17 的 recursive_directory_iterator
     auto it = fs::recursive_directory_iterator(
-        rootPath,
-        fs::directory_options::skip_permission_denied // 跳过权限不足的目录
+      rootPath,
+      fs::directory_options::skip_permission_denied // 跳过权限不足的目录
     );
     auto end = fs::recursive_directory_iterator();
 
@@ -399,14 +400,14 @@ int mergeByDir(const fs::path &rootPath) {
 
       if (is_file) {
         std::string extension =
-            currentPath.has_extension() ? currentPath.extension().string() : "";
+          currentPath.has_extension() ? currentPath.extension().string() : "";
         if (isCodeFile(extension) ||
             isSpecialFile(currentPath.filename().string())) {
           fs::path relativePath;
           try {
             // 计算相对路径
             relativePath =
-                fs::relative(currentPath, rootPath).lexically_normal();
+              fs::relative(currentPath, rootPath).lexically_normal();
           } catch (const fs::filesystem_error &rel_err) {
             std::cerr << "警告: 计算相对路径时出错 for '"
                       << currentPath.string() << "': " << rel_err.what()
@@ -546,26 +547,26 @@ int mergeByRef(const fs::path &refFilePath) {
   std::string escapedRefPathStr;
   std::string refPathStr = refFilePath.string();
   escapedRefPathStr.reserve(refPathStr.size());
-  for (char c : refPathStr) {
+  for (char c: refPathStr) {
     switch (c) {
-    case '&':
-      escapedRefPathStr += "&";
-      break;
-    case '<':
-      escapedRefPathStr += "<";
-      break;
-    case '>':
-      escapedRefPathStr += ">";
-      break;
-    case '\"':
-      escapedRefPathStr += "\"";
-      break;
-    case '\'':
-      escapedRefPathStr += "'";
-      break;
-    default:
-      escapedRefPathStr += c;
-      break;
+      case '&':
+        escapedRefPathStr += "&";
+        break;
+      case '<':
+        escapedRefPathStr += "<";
+        break;
+      case '>':
+        escapedRefPathStr += ">";
+        break;
+      case '\"':
+        escapedRefPathStr += "\"";
+        break;
+      case '\'':
+        escapedRefPathStr += "'";
+        break;
+      default:
+        escapedRefPathStr += c;
+        break;
     }
   }
   xmlFile << "<files source_type=\"reference_file\" ref_file=\""
@@ -602,8 +603,8 @@ int mergeByRef(const fs::path &refFilePath) {
     line = line.substr(first, (last - first + 1));
 
     // 移除 UTF-8 BOM (EF BB BF) - 应该在去除空白前做，但这里也行
-    if (line.size() >= 3 && (unsigned char)line[0] == 0xEF &&
-        (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF) {
+    if (line.size() >= 3 && (unsigned char) line[0] == 0xEF &&
+        (unsigned char) line[1] == 0xBB && (unsigned char) line[2] == 0xBF) {
       line.erase(0, 3);
       // 再次检查是否变空
       if (line.empty()) {
@@ -686,7 +687,7 @@ int mergeByRef(const fs::path &refFilePath) {
             << std::endl;
   // 验证统计
   if (attemptedFiles != mergedFiles + skippedFilesNotFound +
-                            skippedFilesNotFile + skippedFilesReadError) {
+                        skippedFilesNotFile + skippedFilesReadError) {
     std::cout << "警告: 统计数字加总不匹配尝试处理的文件数，请检查日志。"
               << std::endl;
   }
