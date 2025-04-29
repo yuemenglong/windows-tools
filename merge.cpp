@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <regex>     // 新增: 用于正则表达式
+#include <regex> // 新增: 用于正则表达式
 #include <set>
 #include <sstream> // 鐢ㄤ簬瀛楃涓叉祦澶勭悊锛堝鏋滈渶瑕佹洿澶嶆潅鐨勮瑙ｆ瀽锛?#10;#include <stdexcept> // 鐢ㄤ簬 std::exception
 #include <string>
@@ -32,24 +32,23 @@ static const std::vector<std::regex> ignorePatterns = {
     std::regex("\\.vscode"),
     std::regex("cmake-build-debug"),
     std::regex("cmake-build-release"),
-    std::regex("\\..+")  // 新增: 匹配以.开头的任何目录/文件（.和..除外）
+    std::regex("\\..+") // 新增: 匹配以.开头的任何目录/文件（.和..除外）
 };
 
 // 特殊文件名模式 - 使用正则表达式匹配
 static const std::vector<std::regex> specialFilePatterns = {
-    std::regex("CMakeLists\\.txt", std::regex::icase),  // 不区分大小写
-    std::regex("README\\.md", std::regex::icase),       // 不区分大小写
-    std::regex("readme\\.txt", std::regex::icase)       // 不区分大小写
+    std::regex("CMakeLists\\.txt", std::regex::icase), // 不区分大小写
+    std::regex("README\\.md", std::regex::icase),      // 不区分大小写
+    std::regex("readme\\.txt", std::regex::icase)      // 不区分大小写
 };
 
 // --- 辅助函数 (基本不变) ---
 
 bool isCodeFile(const std::string &extension) {
   static const std::set<std::string> codeExtensions = {
-      ".c",    ".cpp",  ".h",  ".hpp",    ".cc",        ".cxx",
-      ".hxx",  ".java", ".py", ".js",     ".ts",        ".go",
-      ".dart", "kt",    ".cs", ".gradle", ".properties"
-  };
+      ".c",    ".cpp",  ".h",   ".hpp", ".cc",     ".cxx",
+      ".hxx",  ".java", ".py",  ".js",  ".ts",     ".go",
+      ".dart", ".kt",   ".kts", ".cs",  ".gradle", ".properties"};
   // 将扩展名转为小写进行比较，更健壮
   std::string lowerExtension = extension;
   std::transform(lowerExtension.begin(), lowerExtension.end(),
@@ -66,7 +65,7 @@ bool shouldIgnorePath(const fs::path &path) {
     if (path.filename() == "." || path.filename() == "..") {
       return true;
     }
-    
+
     // 检查路径的每个部分是否匹配任何忽略模式
     for (const auto &part : path) {
       std::string partStr = part.string();
