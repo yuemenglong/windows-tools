@@ -43,13 +43,13 @@ static const std::vector<std::regex> specialFilePatterns = {
 };
 
 // --- 辅助函数 (基本不变) ---
+static const std::set<std::string> codeExtensions = {
+  ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx",
+  ".hxx", ".java", ".py", ".js", ".ts", ".go",
+  ".dart", ".kt", ".kts", ".cs", ".gradle", ".properties",
+  ".yml", ".yaml"};
 
 bool isCodeFile(const std::string &extension) {
-  static const std::set<std::string> codeExtensions = {
-    ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx",
-    ".hxx", ".java", ".py", ".js", ".ts", ".go",
-    ".dart", ".kt", ".kts", ".cs", ".gradle", ".properties",
-    ".yml", ".yaml"};
   // 将扩展名转为小写进行比较，更健壮
   std::string lowerExtension = extension;
   std::transform(lowerExtension.begin(), lowerExtension.end(),
