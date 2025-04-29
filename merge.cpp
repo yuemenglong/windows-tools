@@ -18,18 +18,13 @@ namespace fs = std::filesystem;
 // 使用正则表达式匹配，更灵活
 static const std::vector<std::regex> ignorePatterns = {
   std::regex("venv"),
-  std::regex("\\.venv"),
   std::regex("node_modules"),
-  std::regex("\\.git"),
   std::regex("__pycache__"),
   std::regex("build"),
   std::regex("dist"),
   std::regex("bin"),
   std::regex("obj"),
   std::regex("target"),
-  std::regex("\\.idea"),
-  std::regex("\\.vs"),
-  std::regex("\\.vscode"),
   std::regex("cmake-build-debug"),
   std::regex("cmake-build-release"),
   std::regex("\\..+") // 新增: 匹配以.开头的任何目录/文件（.和..除外）
