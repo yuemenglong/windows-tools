@@ -30,6 +30,11 @@ static const std::vector<std::regex> ignorePatterns = {
   std::regex("\\..+") // 新增: 匹配以.开头的任何目录/文件（.和..除外）
 };
 
+/// 反忽略模式：如果匹配则不忽略（优先生效）
+static const std::vector<std::regex> antiIgnorePatterns = {
+  std::regex("\\.cursor"),
+};
+
 // 特殊文件名模式 - 使用正则表达式匹配
 static const std::vector<std::regex> specialFilePatterns = {
   std::regex("CMakeLists\\.txt", std::regex::icase), // 不区分大小写
@@ -65,6 +70,13 @@ bool shouldIgnorePath(const fs::path &path) {
     // 检查路径的每个部分是否匹配任何忽略模式
     for (const auto &part: path) {
       std::string partStr = part.string();
+      // 优先判断 antiIgnorePatterns，匹配则直接不忽略
+      for (const auto &antiPattern: antiIgnorePatterns) {
+        if (std::regex_match(partStr, antiPattern)) {
+          return false;
+        }
+      }
+      // 再判断 ignorePatterns
       for (const auto &pattern: ignorePatterns) {
         if (std::regex_match(partStr, pattern)) {
           return true;
