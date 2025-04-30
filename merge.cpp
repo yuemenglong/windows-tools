@@ -47,7 +47,7 @@ static const std::set<std::string> codeExtensions = {
   ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx",
   ".hxx", ".java", ".py", ".js", ".ts", ".go",
   ".dart", ".kt", ".kts", ".cs", ".gradle", ".properties",
-  ".yml", ".yaml", ".mdc"};
+  ".yml", ".yaml", ".mdc", ".rs"};
 
 bool isCodeFile(const std::string &extension) {
   // 将扩展名转为小写进行比较，更健壮
