@@ -410,7 +410,7 @@ int mergeByDir(const fs::path &rootPath) {
 
   fs::path outputFile =
       rootPath.parent_path() /
-      (rootPath.filename().string() + "_structured_merge.xml"); // New filename
+      (rootPath.filename().string() + "_merge.xml"); // New filename
   std::ofstream xmlFile(outputFile,
                         std::ios::out | std::ios::binary); // Use binary mode
 
