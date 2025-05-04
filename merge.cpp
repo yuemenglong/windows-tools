@@ -11,6 +11,15 @@
 #include <string>
 #include <system_error>
 #include <vector>
+#include <iterator> // Required for std::istreambuf_iterator
+#include <array>    // Good for fixed-size BOMs
+
+// Define BOM sequences as constants
+const std::array<unsigned char, 3> UTF8_BOM = {0xEF, 0xBB, 0xBF};
+const std::array<unsigned char, 2> UTF16LE_BOM = {0xFF, 0xFE};
+const std::array<unsigned char, 2> UTF16BE_BOM = {0xFE, 0xFF};
+const std::array<unsigned char, 4> UTF32LE_BOM = {0xFF, 0xFE, 0x00, 0x00};
+const std::array<unsigned char, 4> UTF32BE_BOM = {0x00, 0x00, 0xFE, 0xFF};
 
 namespace fs = std::filesystem;
 
@@ -113,19 +122,86 @@ bool isSpecialFile(const std::string &filename) {
 }
 
 // readFileContent remains the same
+/**
+ * @brief Reads the entire content of a file as binary data, detects and removes
+ *        known BOMs (UTF-8, UTF-16 LE/BE, UTF-32 LE/BE).
+ * @param filePath Path to the file.
+ * @return File content as a string (byte sequence), with BOM removed if found.
+ *         Returns an empty string on error.
+ * @warning This function removes the BOM but does NOT transcode the content.
+ *          If the file was UTF-16 or UTF-32, the returned string will contain
+ *          the raw byte sequence of that encoding (minus the BOM). Subsequent
+ *          processing (like writing to UTF-8 XML) might require transcoding.
+ */
 std::string readFileContent(const fs::path &filePath) {
-  std::ifstream file(filePath, std::ios::in | std::ios::binary);
-  if (!file) {
-    std::cerr << "错误: 无法打开文件: " << filePath.string() << std::endl;
-    return "";
-  }
-  std::string content((std::istreambuf_iterator<char>(file)),
-                      std::istreambuf_iterator<char>());
-  if (file.bad()) {
-    std::cerr << "错误: 读取文件时出错: " << filePath.string() << std::endl;
-    return "";
-  }
-  return content;
+    std::ifstream file(filePath, std::ios::in | std::ios::binary);
+    if (!file) {
+        std::cerr << "错误: 无法打开文件: " << filePath.string() << std::endl;
+        return "";
+    }
+
+    // Read the entire file into a string (as raw bytes)
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+
+    if (file.bad()) {
+        std::cerr << "错误: 读取文件时出错: " << filePath.string() << std::endl;
+        return "";
+    }
+
+    // --- Check for and remove BOMs ---
+    // Order matters: check longer BOMs before shorter ones if they share prefixes.
+    size_t bomSize = 0;
+    std::string detectedBomType = "None";
+
+    // Helper lambda to check if content starts with a specific BOM sequence
+    auto startsWith = [&](const auto& bom) {
+        if (content.size() < bom.size()) {
+            return false;
+        }
+        for (size_t i = 0; i < bom.size(); ++i) {
+            // Compare using unsigned char values
+            if (static_cast<unsigned char>(content[i]) != bom[i]) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    if (startsWith(UTF32LE_BOM)) {
+        bomSize = UTF32LE_BOM.size();
+        detectedBomType = "UTF-32 LE";
+    } else if (startsWith(UTF32BE_BOM)) {
+        bomSize = UTF32BE_BOM.size();
+        detectedBomType = "UTF-32 BE";
+    } else if (startsWith(UTF16LE_BOM)) { // Check after UTF32LE due to shared prefix FF FE
+        bomSize = UTF16LE_BOM.size();
+        detectedBomType = "UTF-16 LE";
+    } else if (startsWith(UTF16BE_BOM)) { // Check after UTF32BE (though no prefix overlap)
+        bomSize = UTF16BE_BOM.size();
+        detectedBomType = "UTF-16 BE";
+    } else if (startsWith(UTF8_BOM)) {
+        bomSize = UTF8_BOM.size();
+        detectedBomType = "UTF-8";
+    }
+
+    if (bomSize > 0) {
+        content.erase(0, bomSize); // Remove the detected BOM
+        // Optional: Log the removal
+        // std::cout << "  (已移除 " << detectedBomType << " BOM: " << filePath.filename().string() << ")" << std::endl;
+    }
+    // --- End BOM Check ---
+
+    // **Important Caveat:**
+    // The content string now holds the file's byte sequence *without* the BOM.
+    // If the original encoding was UTF-16 or UTF-32, this string still contains
+    // those bytes. Since the XML output must be UTF-8, simply removing the BOM
+    // from UTF-16/UTF-32 files might lead to invalid XML if the content contains
+    // non-ASCII characters. A full transcoding step would be needed for robust
+    // handling of arbitrary UTF-16/UTF-32 input if required.
+    // This implementation fulfills the request to *remove the BOM only*.
+
+    return content;
 }
 
 // escapeXmlChars remains mostly the same, ensure it handles CDATA end correctly
