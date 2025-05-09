@@ -45,7 +45,7 @@ const std::string TIMEOUT_TEXT =
   std::string(
     "**Important:**\nI might repeat this same response. Don't worry, this is normal. It means I'm still thinking. Please continue asking me and don't give up.");
 const std::string EXT_TEXT =
-  "\n\n**Important:**\nWhen this task or answer is completed, use the mcp 'ask' tool to ask me if there are any new tasks.";
+  "\n\n**Important:**\nWhen this answer is completed, use the mcp 'ask' tool to ask me if there are any new question.";
 #endif
 
 // --- get_timestamp function remains unchanged ---

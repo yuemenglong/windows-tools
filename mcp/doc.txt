@@ -28,3 +28,9 @@ custon_mode:
 **Important**
 After completing one answer or task, please use the mcp 'ask' tool to ask me if there are any new tasks.
 Answer in Chinese.
+
+
+windsurf global rules:
+**Important**
+Only when a complete response has been generated and all current tasks are finished with no other work pending, please use the MCP 'ask' tool to ask me if there are any new tasks.
+Answer in Chinese.
