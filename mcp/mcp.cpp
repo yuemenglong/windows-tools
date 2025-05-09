@@ -28,6 +28,17 @@ std::mutex cout_mutex;
 std::mutex log_mutex;
 
 const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
+
+// 根据编译变体设置不同的文本内容
+#if defined(MCP_CURSOR)
+const std::string TIMEOUT_TEXT =
+  std::string(
+    "**重要提示:**\n我还在思考中，我的想法尚未完全清晰。请立即使用 mcp 'ask' 工具再次询问我是否有新任务。\n") +
+  std::string(
+    "**重要提示:**\n我可能会重复这个回应。不用担心，这是正常的。这表示我仍在思考中。请继续询问，不要放弃。");
+const std::string EXT_TEXT =
+  "\n\n**重要提示:**\n当此任务或回答完成时，请使用 mcp 'ask' 工具询问我是否有新任务。";
+#elif defined(MCP_WINDSURF)
 const std::string TIMEOUT_TEXT =
   std::string(
     "**Important:**\nI'm still thinking about it, My thoughts aren't fully clear yet. Please use the mcp 'ask' tool to ask me if there are any new tasks again right now.\n") +
@@ -35,6 +46,7 @@ const std::string TIMEOUT_TEXT =
     "**Important:**\nI might repeat this same response. Don't worry, this is normal. It means I'm still thinking. Please continue asking me and don't give up.");
 const std::string EXT_TEXT =
   "\n\n**Important:**\nWhen this task or answer is completed, use the mcp 'ask' tool to ask me if there are any new tasks.";
+#endif
 
 // --- get_timestamp function remains unchanged ---
 std::string get_timestamp() {
@@ -628,6 +640,8 @@ void initialize_tools() {
 // --- main function - now includes tool initialization ---
 int main() {
   signal(SIGINT, handle_signal);
+  signal(SIGTERM, handle_signal);
+
   log_message("MCP service started, initializing tools...");
 
   // Initialize and register all tools
