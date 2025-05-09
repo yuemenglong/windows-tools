@@ -28,7 +28,7 @@ std::mutex cout_mutex;
 std::mutex log_mutex;
 
 const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
-const std::string TIMEOUT_MESSAGE =
+const std::string TIMEOUT_TEXT =
   std::string(
     "**Important:**\nI'm still thinking about it, My thoughts aren't fully clear yet. Please use the mcp 'ask' tool to ask me if there are any new tasks again right now.\n") +
   std::string(
@@ -169,7 +169,7 @@ std::string execute_notepad_edit(const std::string &cmd = "") {
     }
 
     // Return the specified message
-    return TIMEOUT_MESSAGE;
+    return TIMEOUT_TEXT;
   }
 
   // Normal case - notepad was closed by the user
@@ -603,7 +603,7 @@ void initialize_tools() {
     log_message("ask tool finished, response length: " + std::to_string(response_text.length()));
 
     // Check if the response is not an error message or timeout message
-    if (response_text != TIMEOUT_MESSAGE &&
+    if (response_text != TIMEOUT_TEXT &&
         response_text.substr(0, 6) != "Error:" &&
         !response_text.empty()) {
       // For normal responses, append the requested message
