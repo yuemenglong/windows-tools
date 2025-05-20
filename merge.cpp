@@ -35,6 +35,7 @@ static const std::vector<std::regex> ignorePatterns = {
     std::regex("target"),
     std::regex("cmake-build-debug"),
     std::regex("cmake-build-release"),
+    std::regex("json.hpp"),
     std::regex("\\..+") // 匹配以.开头的任何目录/文件（.和..除外）
 };
 static const std::vector<std::regex> antiIgnorePatterns = {
