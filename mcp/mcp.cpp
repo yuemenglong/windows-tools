@@ -27,7 +27,7 @@ using json = nlohmann::json;
 std::mutex cout_mutex;
 std::mutex log_mutex;
 
-const DWORD NOTEPAD_TIMEOUT_MS = 3 * 60 * 1000;
+const DWORD NOTEPAD_TIMEOUT_MS = 6 * 60 * 1000;
 
 // 根据编译变体设置不同的文本内容
 #if defined(MCP_CURSOR)
