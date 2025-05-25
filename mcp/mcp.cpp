@@ -33,11 +33,11 @@ const DWORD NOTEPAD_TIMEOUT_MS = 6 * 60 * 1000;
 #if defined(MCP_CURSOR)
 const std::string TIMEOUT_TEXT =
   std::string(
-    "**重要提示:**\n我还在思考中，我的想法尚未完全清晰。请立即使用 mcp 'ask' 工具再次询问我是否有新任务。\n") +
+    "**Important:**\nI'm still thinking about it, My thoughts aren't fully clear yet. Please use the mcp 'ask' tool to ask me if there are any new tasks again right now.\n") +
   std::string(
-    "**重要提示:**\n我可能会重复这个回应。不用担心，这是正常的。这表示我仍在思考中。请继续询问，不要放弃。");
+    "**Important:**\nI might repeat this same response. Don't worry, this is normal. It means I'm still thinking. Please continue asking me and don't give up.");
 const std::string EXT_TEXT =
-  "\n\n**重要提示:**\n当此任务或回答完成时，请使用 mcp 'ask' 工具询问我是否有新任务。";
+  "\n\n**Important:**\nWhen this task or answer is completed, use the mcp 'ask' tool to ask me if there are any new tasks.";
 #elif defined(MCP_WINDSURF)
 const std::string TIMEOUT_TEXT =
   std::string(
