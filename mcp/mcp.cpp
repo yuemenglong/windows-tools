@@ -70,103 +70,6 @@ void log_message(const std::string &message) {
   }
 }
 
-// --- 编码转换辅助函数 ---
-// Helper function to convert std::string from system ANSI codepage to UTF-8
-std::optional<std::string> AnsiToUtf8(const std::string& ansi_str) {
-    if (ansi_str.empty()) {
-        return std::string();
-    }
-    int wide_len = MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, ansi_str.c_str(), static_cast<int>(ansi_str.length()), NULL, 0);
-    if (wide_len == 0) {
-        log_message("Error in AnsiToUtf8: MultiByteToWideChar (calc length) failed or invalid char. Error: " + std::to_string(GetLastError()));
-        return std::nullopt;
-    }
-    std::wstring wide_str(wide_len, 0);
-    if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, ansi_str.c_str(), static_cast<int>(ansi_str.length()), &wide_str[0], wide_len) == 0) {
-        log_message("Error in AnsiToUtf8: MultiByteToWideChar (convert) failed. Error: " + std::to_string(GetLastError()));
-        return std::nullopt;
-    }
-    int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wide_str.c_str(), static_cast<int>(wide_str.length()), NULL, 0, NULL, NULL);
-    if (utf8_len == 0) {
-        log_message("Error in AnsiToUtf8: WideCharToMultiByte (calc length) failed. Error: " + std::to_string(GetLastError()));
-        return std::nullopt;
-    }
-    std::string utf8_str(utf8_len, 0);
-    if (WideCharToMultiByte(CP_UTF8, 0, wide_str.c_str(), static_cast<int>(wide_str.length()), &utf8_str[0], utf8_len, NULL, NULL) == 0) {
-        log_message("Error in AnsiToUtf8: WideCharToMultiByte (convert) failed. Error: " + std::to_string(GetLastError()));
-        return std::nullopt;
-    }
-    return utf8_str;
-}
-
-// Helper function to convert std::string (as raw bytes) from UTF-16LE to UTF-8
-std::optional<std::string> Utf16leBytesToUtf8(const std::string& utf16le_raw_bytes) {
-    if (utf16le_raw_bytes.empty()) {
-        return std::string();
-    }
-    if (utf16le_raw_bytes.length() % sizeof(wchar_t) != 0) {
-        log_message("Warning in Utf16leBytesToUtf8: Raw byte string length is not a multiple of sizeof(wchar_t). Potential truncation.");
-    }
-    const wchar_t* wide_str_ptr = reinterpret_cast<const wchar_t*>(utf16le_raw_bytes.c_str());
-    int num_wide_chars = static_cast<int>(utf16le_raw_bytes.length() / sizeof(wchar_t));
-    if (num_wide_chars == 0 && !utf16le_raw_bytes.empty()) {
-        log_message("Error in Utf16leBytesToUtf8: Not enough bytes for even one UTF-16 char.");
-        return std::nullopt;
-    }
-    int utf8_len = WideCharToMultiByte(CP_UTF8, 0, wide_str_ptr, num_wide_chars, NULL, 0, NULL, NULL);
-    if (utf8_len == 0) {
-        log_message("Error in Utf16leBytesToUtf8: WideCharToMultiByte (calc length) failed. Error: " + std::to_string(GetLastError()));
-        return std::nullopt;
-    }
-    std::string utf8_str(utf8_len, 0);
-    if (WideCharToMultiByte(CP_UTF8, 0, wide_str_ptr, num_wide_chars, &utf8_str[0], utf8_len, NULL, NULL) == 0) {
-        log_message("Error in Utf16leBytesToUtf8: WideCharToMultiByte (convert) failed. Error: " + std::to_string(GetLastError()));
-        return std::nullopt;
-    }
-    return utf8_str;
-}
-
-// Function to attempt to convert a string (read as raw bytes) to UTF-8
-std::string ensure_utf8(const std::string& raw_input_bytes) {
-    if (raw_input_bytes.empty()) {
-        return "";
-    }
-    // 1. Check for UTF-8 BOM (EF BB BF)
-    if (raw_input_bytes.length() >= 3 &&
-        static_cast<unsigned char>(raw_input_bytes[0]) == 0xEF &&
-        static_cast<unsigned char>(raw_input_bytes[1]) == 0xBB &&
-        static_cast<unsigned char>(raw_input_bytes[2]) == 0xBF) {
-        log_message("ensure_utf8: Detected UTF-8 BOM. Stripping BOM and using as UTF-8.");
-        return raw_input_bytes.substr(3);
-    }
-    // 2. Check for UTF-16LE BOM (FF FE)
-    if (raw_input_bytes.length() >= 2 &&
-        static_cast<unsigned char>(raw_input_bytes[0]) == 0xFF &&
-        static_cast<unsigned char>(raw_input_bytes[1]) == 0xFE) {
-        log_message("ensure_utf8: Detected UTF-16 LE BOM. Converting from UTF-16LE.");
-        if (auto converted = Utf16leBytesToUtf8(raw_input_bytes.substr(2))) {
-            return *converted;
-        } else {
-            log_message("ensure_utf8: UTF-16LE BOM detected, but Utf16leBytesToUtf8 conversion failed. Falling back.");
-        }
-    }
-    // 3. Check for UTF-16BE BOM (FE FF)
-    if (raw_input_bytes.length() >= 2 &&
-        static_cast<unsigned char>(raw_input_bytes[0]) == 0xFE &&
-        static_cast<unsigned char>(raw_input_bytes[1]) == 0xFF) {
-        log_message("ensure_utf8: Detected UTF-16 BE BOM. Conversion not implemented yet. Falling back.");
-    }
-    // 4. If no BOM, attempt ANSI to UTF-8 conversion
-    log_message("ensure_utf8: No definitive Unicode BOM found or prior conversion failed. Attempting ANSI to UTF-8 conversion.");
-    if (auto converted_from_ansi = AnsiToUtf8(raw_input_bytes)) {
-        log_message("ensure_utf8: ANSI to UTF-8 conversion successful.");
-        return *converted_from_ansi;
-    } else {
-        log_message("ensure_utf8: ANSI to UTF-8 conversion also failed. Returning original bytes as a last resort (may cause errors).");
-        return raw_input_bytes;
-    }
-}
-
 // Function to write to stdout in a thread-safe manner
 void write_to_stdout(const json &data, const std::string &log_prefix = "") {
   try {
@@ -285,53 +188,16 @@ std::string execute_notepad_edit(const std::string &cmd = "") {
   log_message("Notepad closed normally by user.");
   CloseHandle(sei.hProcess);
 
-  std::ifstream input_file(temp_file_path, std::ios::binary);
+  std::ifstream input_file(temp_file_path);
   if (!input_file.is_open()) {
     DeleteFileW(temp_file_path.c_str());
     return "Error: Unable to read temporary file";
   }
-  
+
   std::string content((std::istreambuf_iterator<char>(input_file)), std::istreambuf_iterator<char>());
   input_file.close();
-  
-  // --- BEGIN Added Logging ---
-  // 记录原始字节日志和BOM
-  if (!content.empty()) {
-      std::stringstream hex_bytes_log;
-      hex_bytes_log << "Notepad raw content (length " << content.length() << ", first ~64 bytes hex): ";
-      for (size_t i = 0; i < std::min(content.length(), static_cast<size_t>(64)); ++i) {
-          hex_bytes_log << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(content[i])) << " ";
-      }
-      log_message(hex_bytes_log.str());
-  
-      // 检查BOM
-      if (content.length() >= 2) {
-          if (static_cast<unsigned char>(content[0]) == 0xFF && static_cast<unsigned char>(content[1]) == 0xFE) {
-              log_message("Notepad content: Detected UTF-16 LE BOM.");
-          } else if (static_cast<unsigned char>(content[0]) == 0xFE && static_cast<unsigned char>(content[1]) == 0xFF) {
-              log_message("Notepad content: Detected UTF-16 BE BOM.");
-          }
-      }
-      if (content.length() >= 3) {
-          if (static_cast<unsigned char>(content[0]) == 0xEF && static_cast<unsigned char>(content[1]) == 0xBB && static_cast<unsigned char>(content[2]) == 0xBF) {
-              log_message("Notepad content: Detected UTF-8 BOM.");
-          }
-      }
-  } else {
-      log_message("Notepad content: Raw content is empty.");
-  }
-  // --- END Added Logging ---
-  
   DeleteFileW(temp_file_path.c_str());
-  
-  // 编码转换
-  std::string utf8_content = ensure_utf8(content);
-  if (content.length() > 0 && utf8_content.empty() && content != utf8_content) {
-      log_message("Warning: ensure_utf8 produced empty string from non-empty input. Original length: " + std::to_string(content.length()));
-  } else if (content != utf8_content) {
-      log_message("Content encoding converted/adjusted by ensure_utf8. Original length: " + std::to_string(content.length()) + ", New length: " + std::to_string(utf8_content.length()));
-  }
-  return utf8_content;
+  return content;
 }
 
 // Tool structure to represent a tool with metadata and execution logic
@@ -755,16 +621,6 @@ void initialize_tools() {
       // For normal responses, append the requested message
       response_text += EXT_TEXT;
       log_message("Added standard message to normal response");
-      
-      // --- BEGIN Added Logging ---
-      log_message("ask_tool: Combined response_text with EXT_TEXT length: " + std::to_string(response_text.length()));
-      std::stringstream combined_hex_bytes_log;
-      combined_hex_bytes_log << "ask_tool: Combined response_text (first ~64 bytes hex): ";
-      for (size_t i = 0; i < std::min(response_text.length(), static_cast<size_t>(64)); ++i) {
-          combined_hex_bytes_log << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(response_text[i])) << " ";
-      }
-      log_message(combined_hex_bytes_log.str());
-      // --- END Added Logging ---
     }
 
     // Create the content array with proper object structure
