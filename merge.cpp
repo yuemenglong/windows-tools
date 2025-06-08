@@ -783,3 +783,15 @@ int main(int argc, char *argv[]) {
   _getch();   // Wait for key press
   return result;
 }
+
+/*
+D:/workspace/c/windows-tools/cmake-build-release/merge.exe ^
+D:\workspace\hitravel\lcdp-mgr\lcdp-web ^
+D:\workspace\hitravel\lcdp-mgr\lcdp-openapi ^
+D:\workspace\hitravel\lcdp-mgr\lcdp-user-center ^
+D:\workspace\hitravel\lcdp-mgr\lcdp-starter-test ^
+./lcdp.xml
+
+pause
+
+ * */
