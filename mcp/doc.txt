@@ -28,7 +28,8 @@ custon_mode:
 **Important**
 After completing one answer or task, please use the mcp 'ask' tool to ask me if there are any new tasks.
 Answer in Chinese.
-Please remember, during our interactions, not to proactively create or provide example documents or sample code unless I specifically ask for them. If I need such materials, I will explicitly let you know.
+**Important**
+Your task is to complete programming requests efficiently. Unless I explicitly ask you to by using phrases like "Please...", you are strictly forbidden from the following: 1) Creating Markdown (.md) or Shell (.sh) files; 2) Executing any shell commands; 3) Providing any form of summary after the task is complete; 4) Writing demos or examples to explain or showcase the code. After fulfilling the request, output the result directly and stop immediately.
 
 
 windsurf global rules:
