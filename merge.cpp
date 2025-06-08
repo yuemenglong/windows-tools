@@ -25,30 +25,30 @@ namespace fs = std::filesystem;
 
 // --- 全局配置 (unchanged) ---
 static const std::vector<std::regex> ignorePatterns = {
-    std::regex("venv"),
-    std::regex("node_modules"),
-    std::regex("__pycache__"),
-    std::regex("build"),
-    std::regex("dist"),
-    std::regex("bin"),
-    std::regex("obj"),
-    std::regex("target"),
-    std::regex("cmake-build-debug"),
-    std::regex("cmake-build-release"),
-    std::regex("json.hpp"),
-    std::regex("\\..+") // 匹配以.开头的任何目录/文件（.和..除外）
+  std::regex("venv"),
+  std::regex("node_modules"),
+  std::regex("__pycache__"),
+  std::regex("build"),
+  std::regex("dist"),
+  std::regex("bin"),
+  std::regex("obj"),
+  std::regex("target"),
+  std::regex("cmake-build-debug"),
+  std::regex("cmake-build-release"),
+  std::regex("json.hpp"),
+  std::regex("\\..+") // 匹配以.开头的任何目录/文件（.和..除外）
 };
 static const std::vector<std::regex> antiIgnorePatterns = {
-    std::regex("\\.cursor"),
+  std::regex("\\.cursor"),
 };
 static const std::vector<std::regex> specialFilePatterns = {
-    std::regex("CMakeLists\\.txt", std::regex::icase),
-    std::regex("README\\.md", std::regex::icase),
-    std::regex("readme\\.txt", std::regex::icase)};
+  std::regex("CMakeLists\\.txt", std::regex::icase),
+  std::regex("README\\.md", std::regex::icase),
+  std::regex("readme\\.txt", std::regex::icase)};
 static const std::set<std::string> codeExtensions = {
-    ".c",      ".cpp",        ".h",   ".hpp",  ".cc",   ".cxx", ".hxx", ".java",
-    ".py",     ".js",         ".ts",  ".go",   ".dart", ".kt",  ".kts", ".cs",
-    ".gradle", ".properties", ".yml", ".yaml", ".mdc",  ".rs"};
+  ".c", ".cpp", ".h", ".hpp", ".cc", ".cxx", ".hxx", ".java",
+  ".py", ".js", ".ts", ".go", ".dart", ".kt", ".kts", ".cs",
+  ".gradle", ".properties", ".yml", ".yaml", ".mdc", ".rs"};
 
 // --- 辅助函数 (mostly unchanged) ---
 bool isCodeFile(const std::string &extension) {
@@ -68,8 +68,8 @@ bool shouldIgnorePath(const fs::path &path) {
     // Check relative path parts against ignore patterns
     // Using generic string conversion which handles separators better
     std::string relativePathStr =
-        path.lexically_relative(fs::current_path())
-            .generic_string(); // Example, adjust base if needed
+      path.lexically_relative(fs::current_path())
+        .generic_string(); // Example, adjust base if needed
 
     // Check parts of the path against patterns
     fs::path tempPath = path;
@@ -81,18 +81,18 @@ bool shouldIgnorePath(const fs::path &path) {
       }
 
       // Anti-ignore patterns take precedence
-      for (const auto &antiPattern : antiIgnorePatterns) {
+      for (const auto &antiPattern: antiIgnorePatterns) {
         if (std::regex_match(partStr, antiPattern)) {
           return false; // Don't ignore if an anti-pattern matches
         }
       }
       // Ignore patterns
-      for (const auto &pattern : ignorePatterns) {
+      for (const auto &pattern: ignorePatterns) {
         if (std::regex_match(partStr, pattern)) {
           // Now check if any anti-ignore pattern *overrides* this ignore for
           // the *same* part
           bool overridden = false;
-          for (const auto &antiPattern : antiIgnorePatterns) {
+          for (const auto &antiPattern: antiIgnorePatterns) {
             if (std::regex_match(partStr, antiPattern)) {
               overridden = true;
               break;
@@ -114,7 +114,7 @@ bool shouldIgnorePath(const fs::path &path) {
 }
 
 bool isSpecialFile(const std::string &filename) {
-  for (const auto &pattern : specialFilePatterns) {
+  for (const auto &pattern: specialFilePatterns) {
     if (std::regex_match(filename, pattern)) {
       return true;
     }
@@ -135,74 +135,74 @@ bool isSpecialFile(const std::string &filename) {
  *          processing (like writing to UTF-8 XML) might require transcoding.
  */
 std::string readFileContent(const fs::path &filePath) {
-    std::ifstream file(filePath, std::ios::in | std::ios::binary);
-    if (!file) {
-        std::cerr << "错误: 无法打开文件: " << filePath.string() << std::endl;
-        return "";
+  std::ifstream file(filePath, std::ios::in | std::ios::binary);
+  if (!file) {
+    std::cerr << "错误: 无法打开文件: " << filePath.string() << std::endl;
+    return "";
+  }
+
+  // Read the entire file into a string (as raw bytes)
+  std::string content((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+
+  if (file.bad()) {
+    std::cerr << "错误: 读取文件时出错: " << filePath.string() << std::endl;
+    return "";
+  }
+
+  // --- Check for and remove BOMs ---
+  // Order matters: check longer BOMs before shorter ones if they share prefixes.
+  size_t bomSize = 0;
+  std::string detectedBomType = "None";
+
+  // Helper lambda to check if content starts with a specific BOM sequence
+  auto startsWith = [&](const auto &bom) {
+    if (content.size() < bom.size()) {
+      return false;
     }
-
-    // Read the entire file into a string (as raw bytes)
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
-
-    if (file.bad()) {
-        std::cerr << "错误: 读取文件时出错: " << filePath.string() << std::endl;
-        return "";
+    for (size_t i = 0; i < bom.size(); ++i) {
+      // Compare using unsigned char values
+      if (static_cast<unsigned char>(content[i]) != bom[i]) {
+        return false;
+      }
     }
+    return true;
+  };
 
-    // --- Check for and remove BOMs ---
-    // Order matters: check longer BOMs before shorter ones if they share prefixes.
-    size_t bomSize = 0;
-    std::string detectedBomType = "None";
+  if (startsWith(UTF32LE_BOM)) {
+    bomSize = UTF32LE_BOM.size();
+    detectedBomType = "UTF-32 LE";
+  } else if (startsWith(UTF32BE_BOM)) {
+    bomSize = UTF32BE_BOM.size();
+    detectedBomType = "UTF-32 BE";
+  } else if (startsWith(UTF16LE_BOM)) { // Check after UTF32LE due to shared prefix FF FE
+    bomSize = UTF16LE_BOM.size();
+    detectedBomType = "UTF-16 LE";
+  } else if (startsWith(UTF16BE_BOM)) { // Check after UTF32BE (though no prefix overlap)
+    bomSize = UTF16BE_BOM.size();
+    detectedBomType = "UTF-16 BE";
+  } else if (startsWith(UTF8_BOM)) {
+    bomSize = UTF8_BOM.size();
+    detectedBomType = "UTF-8";
+  }
 
-    // Helper lambda to check if content starts with a specific BOM sequence
-    auto startsWith = [&](const auto& bom) {
-        if (content.size() < bom.size()) {
-            return false;
-        }
-        for (size_t i = 0; i < bom.size(); ++i) {
-            // Compare using unsigned char values
-            if (static_cast<unsigned char>(content[i]) != bom[i]) {
-                return false;
-            }
-        }
-        return true;
-    };
+  if (bomSize > 0) {
+    content.erase(0, bomSize); // Remove the detected BOM
+    // Optional: Log the removal
+    // std::cout << "  (已移除 " << detectedBomType << " BOM: " << filePath.filename().string() << ")" << std::endl;
+  }
+  // --- End BOM Check ---
 
-    if (startsWith(UTF32LE_BOM)) {
-        bomSize = UTF32LE_BOM.size();
-        detectedBomType = "UTF-32 LE";
-    } else if (startsWith(UTF32BE_BOM)) {
-        bomSize = UTF32BE_BOM.size();
-        detectedBomType = "UTF-32 BE";
-    } else if (startsWith(UTF16LE_BOM)) { // Check after UTF32LE due to shared prefix FF FE
-        bomSize = UTF16LE_BOM.size();
-        detectedBomType = "UTF-16 LE";
-    } else if (startsWith(UTF16BE_BOM)) { // Check after UTF32BE (though no prefix overlap)
-        bomSize = UTF16BE_BOM.size();
-        detectedBomType = "UTF-16 BE";
-    } else if (startsWith(UTF8_BOM)) {
-        bomSize = UTF8_BOM.size();
-        detectedBomType = "UTF-8";
-    }
+  // **Important Caveat:**
+  // The content string now holds the file's byte sequence *without* the BOM.
+  // If the original encoding was UTF-16 or UTF-32, this string still contains
+  // those bytes. Since the XML output must be UTF-8, simply removing the BOM
+  // from UTF-16/UTF-32 files might lead to invalid XML if the content contains
+  // non-ASCII characters. A full transcoding step would be needed for robust
+  // handling of arbitrary UTF-16/UTF-32 input if required.
+  // This implementation fulfills the request to *remove the BOM only*.
 
-    if (bomSize > 0) {
-        content.erase(0, bomSize); // Remove the detected BOM
-        // Optional: Log the removal
-        // std::cout << "  (已移除 " << detectedBomType << " BOM: " << filePath.filename().string() << ")" << std::endl;
-    }
-    // --- End BOM Check ---
-
-    // **Important Caveat:**
-    // The content string now holds the file's byte sequence *without* the BOM.
-    // If the original encoding was UTF-16 or UTF-32, this string still contains
-    // those bytes. Since the XML output must be UTF-8, simply removing the BOM
-    // from UTF-16/UTF-32 files might lead to invalid XML if the content contains
-    // non-ASCII characters. A full transcoding step would be needed for robust
-    // handling of arbitrary UTF-16/UTF-32 input if required.
-    // This implementation fulfills the request to *remove the BOM only*.
-
-    return content;
+  return content;
 }
 
 // escapeXmlChars remains mostly the same, ensure it handles CDATA end correctly
@@ -245,39 +245,39 @@ std::string escapeXmlChars(const std::string &input) {
 std::string escapeXmlAttribute(const std::string &input) {
   std::string result;
   result.reserve(input.size());
-  for (char c : input) {
+  for (char c: input) {
     switch (c) {
-    case '&':
-      result += "&";
-      break;
-    case '<':
-      result += "<";
-      break;
-    case '>':
-      result += ">";
-      break; // Must escape > in attributes
-    case '\"':
-      result += "\"";
-      break;
-    case '\'':
-      result += "'";
-      break;
-    // Control characters (like newline, tab) are generally invalid in
-    // attributes or should be handled carefully depending on XML parser
-    // expectations. Let's assume filenames won't contain raw newlines/tabs that
-    // need preserving in attributes. If they might, they should probably be
-    // encoded (e.g., 	 for tab). For simplicity, we'll copy other characters
-    // directly.
-    default:
-      // Basic check for other invalid XML chars if needed, similar to
-      // escapeXmlChars
-      if ((c >= 0x00 && c <= 0x1F) && c != '\t' && c != '\n' && c != '\r') {
-        // Skip or replace invalid control characters for attributes
-        continue;
-      } else {
-        result += c;
-      }
-      break;
+      case '&':
+        result += "&";
+        break;
+      case '<':
+        result += "<";
+        break;
+      case '>':
+        result += ">";
+        break; // Must escape > in attributes
+      case '\"':
+        result += "\"";
+        break;
+      case '\'':
+        result += "'";
+        break;
+        // Control characters (like newline, tab) are generally invalid in
+        // attributes or should be handled carefully depending on XML parser
+        // expectations. Let's assume filenames won't contain raw newlines/tabs that
+        // need preserving in attributes. If they might, they should probably be
+        // encoded (e.g., 	 for tab). For simplicity, we'll copy other characters
+        // directly.
+      default:
+        // Basic check for other invalid XML chars if needed, similar to
+        // escapeXmlChars
+        if ((c >= 0x00 && c <= 0x1F) && c != '\t' && c != '\n' && c != '\r') {
+          // Skip or replace invalid control characters for attributes
+          continue;
+        } else {
+          result += c;
+        }
+        break;
     }
   }
   return result;
@@ -311,8 +311,8 @@ void processDirectoryRecursive(const fs::path &currentDir,
 
   // Iterate over direct children
   try {
-    for (const auto &entry : fs::directory_iterator(
-             currentDir, fs::directory_options::skip_permission_denied, ec)) {
+    for (const auto &entry: fs::directory_iterator(
+      currentDir, fs::directory_options::skip_permission_denied, ec)) {
       if (ec) {
         std::cerr << "警告: 访问目录条目时出错 '" << currentDir.string()
                   << "': " << ec.message() << ", 跳过此条目。" << std::endl;
@@ -395,7 +395,7 @@ void processDirectoryRecursive(const fs::path &currentDir,
             });
 
   // Process Directories first
-  for (const auto &dirEntry : subdirs) {
+  for (const auto &dirEntry: subdirs) {
     std::string dirName = dirEntry.path().filename().string();
     std::cout << indent(indentLevel) << "处理目录: " << dirName << std::endl;
     xmlFile << indent(indentLevel) << "<dir name=\""
@@ -407,11 +407,11 @@ void processDirectoryRecursive(const fs::path &currentDir,
   }
 
   // Process Files next
-  for (const auto &fileEntry : files) {
+  for (const auto &fileEntry: files) {
     fs::path filePath = fileEntry.path();
     std::string filename = filePath.filename().string();
     std::string extension =
-        filePath.has_extension() ? filePath.extension().string() : "";
+      filePath.has_extension() ? filePath.extension().string() : "";
 
     if (isCodeFile(extension) || isSpecialFile(filename)) {
       std::cout << indent(indentLevel) << "处理文件: " << filename << std::endl;
@@ -467,59 +467,54 @@ void processDirectoryRecursive(const fs::path &currentDir,
 
 // --- 处理逻辑函数 (mergeByDir modified) ---
 
-int mergeByDir(const fs::path &rootPath) {
-  std::cout << "模式: 按目录扫描 (新结构)\n";
-  std::cout << "根目录: " << rootPath.string() << std::endl;
+// 新的函数签名，接收一个目录列表和输出文件路径
+int mergeByDir(const std::vector<fs::path> &rootPaths, const fs::path &outputFile) {
+  std::cout << "模式: 按目录扫描\n";
 
-  std::error_code ec_check;
-  if (!fs::exists(rootPath, ec_check) ||
-      !fs::is_directory(rootPath, ec_check)) {
-    // Error messages remain the same
-    if (ec_check) {
-      std::cerr << "错误: 检查路径 '" << rootPath.string()
-                << "' 时出错: " << ec_check.message() << std::endl;
-    } else {
-      std::cerr << "错误: " << rootPath.string() << " 不存在或不是一个目录"
-                << std::endl;
-    }
-    return 1;
-  }
-
-  fs::path outputFile =
-      rootPath.parent_path() /
-      (rootPath.filename().string() + "_merge.xml"); // New filename
-  std::ofstream xmlFile(outputFile,
-                        std::ios::out | std::ios::binary); // Use binary mode
-
+  // 直接使用传入的输出文件路径
+  std::ofstream xmlFile(outputFile, std::ios::out | std::ios::binary);
   if (!xmlFile) {
     std::cerr << "错误: 无法创建输出文件: " << outputFile.string() << std::endl;
     return 1;
   }
   std::cout << "输出文件: " << outputFile.string() << std::endl;
 
-  // Statistics
+  // 初始化统计变量
   int mergedFiles = 0;
   int skippedFilesNonCode = 0;
-  int skippedFilesIgnored =
-      0; // Includes read errors, permission errors, ignored patterns
+  int skippedFilesIgnored = 0;
   int skippedDirs = 0;
-  // int totalScanned = 0; // Harder to track accurately with recursion without
-  // passing down
 
-  // Write XML Header
+  // 写入XML头部和新的根节点 <projects>
   xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+  xmlFile << "<projects>\n";
 
-  // Write Root Element - <project>
-  std::string rootPathStr = rootPath.string(); // Use the original absolute path
-  xmlFile << "<project path=\"" << escapeXmlAttribute(rootPathStr) << "\">\n";
+  // 遍历所有传入的根目录
+  for (const auto &rootPath: rootPaths) {
+    std::cout << "\n--- 开始处理根目录: " << rootPath.string() << " ---\n";
 
-  // Start recursive processing from the root
-  processDirectoryRecursive(
-      rootPath, xmlFile, 1, rootPath, // Start indent level 1
-      mergedFiles, skippedFilesNonCode, skippedFilesIgnored, skippedDirs);
+    // 验证每个根目录的有效性
+    std::error_code ec_check;
+    if (!fs::exists(rootPath, ec_check) || !fs::is_directory(rootPath, ec_check)) {
+      std::cerr << "警告: 路径 '" << rootPath.string() << "' 不存在或不是一个目录，已跳过。\n";
+      continue; // 跳过无效的目录
+    }
 
-  // Write closing root tag
-  xmlFile << "</project>\n";
+    // 为每个根目录创建一个 <project> 节点
+    std::string rootPathStr = rootPath.string();
+    xmlFile << indent(1) << "<project path=\"" << escapeXmlAttribute(rootPathStr) << "\">\n";
+
+    // 调用递归函数，注意缩进级别从2开始
+    processDirectoryRecursive(
+      rootPath, xmlFile, 2, // 缩进从 level 2 开始
+      rootPath, mergedFiles, skippedFilesNonCode, skippedFilesIgnored, skippedDirs);
+
+    xmlFile << indent(1) << "</project>\n";
+    std::cout << "--- 完成处理根目录: " << rootPath.string() << " ---\n";
+  }
+
+  // 写入关闭的根标签
+  xmlFile << "</projects>\n";
   xmlFile.close();
 
   if (!xmlFile) {
@@ -528,16 +523,12 @@ int mergeByDir(const fs::path &rootPath) {
     return 1;
   }
 
-  // Output statistics
-  std::cout << "\n==== 目录扫描处理完成 (新结构) ====\n";
+  // 输出统计信息
+  std::cout << "\n==== 目录扫描处理完成 ====\n";
   std::cout << "合并的文件数: " << mergedFiles << std::endl;
-  std::cout << "跳过的文件数 (非代码/特殊): " << skippedFilesNonCode
-            << std::endl;
+  std::cout << "跳过的文件数 (非代码/特殊): " << skippedFilesNonCode << std::endl;
   std::cout << "跳过的忽略目录数: " << skippedDirs << std::endl;
-  std::cout << "跳过的忽略/错误/非文件条目数: " << skippedFilesIgnored
-            << std::endl;
-  // Note: Total scanned items isn't easily available without more complex
-  // counter passing
+  std::cout << "跳过的忽略/错误/非文件条目数: " << skippedFilesIgnored << std::endl;
   std::cout << "输出文件: " << outputFile.string() << std::endl;
 
   return 0;
@@ -586,7 +577,7 @@ int mergeByRef(const fs::path &refFilePath) {
 
   xmlFile << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
   std::string escapedRefPathStr =
-      escapeXmlAttribute(refFilePath.string()); // Use new escaper
+    escapeXmlAttribute(refFilePath.string()); // Use new escaper
   xmlFile << "<files source_type=\"reference_file\" ref_file=\""
           << escapedRefPathStr
           << "\">\n"; // Root element remains <files> for ref mode
@@ -633,8 +624,8 @@ int mergeByRef(const fs::path &refFilePath) {
     }
     size_t last = line.find_last_not_of(" \t\n\r\f\v");
     line = line.substr(first, (last - first + 1));
-    if (line.size() >= 3 && (unsigned char)line[0] == 0xEF &&
-        (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF) {
+    if (line.size() >= 3 && (unsigned char) line[0] == 0xEF &&
+        (unsigned char) line[1] == 0xBB && (unsigned char) line[2] == 0xBF) {
       line.erase(0, 3);
     }
     if (line.empty() || line[0] == '#') {
@@ -700,7 +691,7 @@ int mergeByRef(const fs::path &refFilePath) {
   return 0;
 }
 
-// --- 主函数 (unchanged) ---
+// --- 主函数 (modified for multi-directory support) ---
 int main(int argc, char *argv[]) {
   fs::path inputPath;
   int result = 1;
@@ -712,69 +703,76 @@ int main(int argc, char *argv[]) {
     std::getline(std::cin, dirInput);
     if (dirInput.empty()) {
       std::cerr << "未输入任何路径，程序退出。" << std::endl;
-      // Add getch() for pause if needed
       return 1;
     }
     try {
       inputPath = fs::absolute(dirInput).lexically_normal();
-      result =
-          mergeByDir(inputPath); // Always call mergeByDir for interactive mode
+      // 兼容模式：单目录扫描，使用旧的输出文件命名规则
+      std::vector<fs::path> inputDirs = {inputPath};
+      fs::path outputFile = inputPath.parent_path() / (inputPath.filename().string() + "_merge.xml");
+      result = mergeByDir(inputDirs, outputFile);
     } catch (const std::exception &e) {
       std::cerr << "错误: 处理输入路径时出错: " << e.what() << std::endl;
-      // Add getch() for pause if needed
       return 1;
     }
-  } else if (argc == 2) {
-    try {
-      inputPath = argv[1];
-      inputPath = fs::absolute(inputPath).lexically_normal();
-    } catch (const std::exception &e) {
-      std::cerr << "错误: 处理输入路径时出错: " << e.what() << std::endl;
-      // Add getch() for pause if needed
-      return 1;
-    }
-    // Check type *after* getting absolute path
-    bool is_dir = fs::is_directory(inputPath, ec);
-    if (!ec && is_dir) {
-      result = mergeByDir(inputPath);
-    } else if (!ec) { // Not a directory, check if it's a regular file
-      bool is_file = fs::is_regular_file(inputPath, ec);
-      if (!ec && is_file) {
-        result = mergeByRef(inputPath);
-      } else if (!ec) { // Exists but is neither dir nor regular file
-        std::cerr << "错误: 输入路径 '" << inputPath.string()
-                  << "' 存在但不是一个目录或常规文件。" << std::endl;
-        result = 1;
-      } else { // Error checking if it's a regular file
-        std::cerr << "错误: 检查文件类型时出错 '" << inputPath.string()
-                  << "': " << ec.message() << std::endl;
-        result = 1;
-      }
-    } else { // Error checking if it's a directory
-      // Check if it simply doesn't exist
-      if (!fs::exists(inputPath)) { // Re-check existence specifically
-        std::cerr << "错误: 输入路径 '" << inputPath.string() << "' 不存在。"
-                  << std::endl;
-      } else { // Exists, but the is_directory check failed with an error
-        std::cerr << "错误: 无法访问或确定路径类型 '" << inputPath.string()
-                  << "': " << ec.message() << std::endl;
-      }
-      result = 1;
-    }
-    // Clear error code if it was handled, or report persistent error
-    ec.clear(); // Assuming errors were reported inline
+  } else if (argc >= 2) { // 修改为处理所有 argc >= 2 的情况
+    // 首先判断是否是按引用文件模式（因为它的格式是固定的：一个文件输入）
+    fs::path firstArgPath = argv[1];
+    std::error_code ec;
+    bool is_file = fs::is_regular_file(fs::absolute(firstArgPath), ec);
 
-  } else {
-    std::cerr << "用法: " << argv[0] << " <目录路径 | 引用文件路径>"
-              << std::endl;
-    // Usage instructions remain the same
-    std::cerr << "  <目录路径>: 扫描该目录下所有符合条件的代码文件 "
-                 "(输出层级结构XML)。"
-              << std::endl; // Updated description
-    std::cerr << "  <引用文件路径>: 读取该文本文件中列出的文件路径进行合并 "
-                 "(输出扁平结构XML)。"
-              << std::endl;
-    // Add getch() for pause if needed
+    // 如果只有一个参数，且它是一个文件，则认为是引用文件模式
+    if (argc == 2 && !ec && is_file) {
+      result = mergeByRef(fs::absolute(firstArgPath).lexically_normal());
+    }
+      // 否则，全部当作目录扫描模式处理
+    else {
+      std::vector<fs::path> inputDirs;
+      fs::path outputFile;
+
+      if (argc == 2) { // 兼容旧的单目录模式
+        fs::path rootPath = fs::absolute(argv[1]).lexically_normal();
+        if (!fs::is_directory(rootPath, ec)) {
+          std::cerr << "错误: 输入路径 '" << rootPath.string() << "' 不是一个有效的目录。" << std::endl;
+          return 1;
+        }
+        inputDirs.push_back(rootPath);
+        // 沿用旧的输出文件命名规则
+        outputFile = rootPath.parent_path() / (rootPath.filename().string() + "_merge.xml");
+
+      } else { // argc >= 3, 新的多目录模式
+        // 最后一个参数是输出文件
+        outputFile = fs::absolute(argv[argc - 1]).lexically_normal();
+
+        // 检查输出文件的父目录是否存在
+        fs::path outputParentPath = outputFile.parent_path();
+        if (!outputParentPath.empty() && !fs::exists(outputParentPath)) {
+          std::cerr << "错误: 输出目录 '" << outputParentPath.string() << "' 不存在。" << std::endl;
+          return 1;
+        }
+
+        // 其余参数是输入目录
+        for (int i = 1; i < argc - 1; ++i) {
+          fs::path dirPath = fs::absolute(argv[i]).lexically_normal();
+          if (!fs::is_directory(dirPath, ec)) {
+            std::cerr << "错误: 输入路径 '" << dirPath.string() << "' 不是一个有效的目录。所有输入都必须是目录。" << std::endl;
+            return 1;
+          }
+          inputDirs.push_back(dirPath);
+        }
+      }
+
+      // 统一调用新的 mergeByDir 函数
+      result = mergeByDir(inputDirs, outputFile);
+    }
+
+  } else { // argc < 1 的情况，实际上是 argc == 0，不太可能发生，但保持完整
+    std::cerr << "用法 1 (单目录): " << argv[0] << " <目录路径>" << std::endl;
+    std::cerr << "  -> 扫描单个目录，并在其父目录下生成'目录名_merge.xml'。\n" << std::endl;
+    std::cerr << "用法 2 (多目录): " << argv[0] << " <目录1> <目录2> ... <输出文件.xml>" << std::endl;
+    std::cerr << "  -> 扫描多个目录，并将所有结果合并到指定的输出文件中。\n" << std::endl;
+    std::cerr << "用法 3 (引用文件): " << argv[0] << " <引用文件路径>" << std::endl;
+    std::cerr << "  -> 读取引用文件中列出的文件路径进行合并。\n" << std::endl;
     return 1;
   }
 
